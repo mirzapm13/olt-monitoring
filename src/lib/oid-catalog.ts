@@ -1,4 +1,4 @@
-export type OidProfileKey = "generic" | "vsol-gpon" | "hsgq-gpon" | "hsgq-epon"
+export type OidProfileKey = "generic" | "vsol-gpon" | "vsol-epon" | "hsgq-gpon" | "hsgq-epon" | "hioso-epon"
 
 export type OidItem = {
   key: string
@@ -51,6 +51,46 @@ export const oidProfiles: OidProfile[] = [
       { key: "temperature", label: "ONT temperature", oid: "1.3.6.1.4.1.37950.1.1.6.1.1.3.1.3", kind: "optical" },
       { key: "txPower", label: "ONT TX power", oid: "1.3.6.1.4.1.37950.1.1.6.1.1.3.1.6", kind: "optical" },
       { key: "rxPower", label: "ONT RX power", oid: "1.3.6.1.4.1.37950.1.1.6.1.1.3.1.7", kind: "optical" },
+      ...interfaceItems,
+    ],
+  },
+  {
+    key: "vsol-epon",
+    name: "VSOL EPON",
+    enterpriseRoot: "1.3.6.1.4.1.37950",
+    items: [
+      ...systemItems,
+      { key: "productModel", label: "Product model", oid: "1.3.6.1.4.1.37950.1.1.5.10.14.1.0", kind: "system" },
+      { key: "firmwareVersion", label: "Firmware version", oid: "1.3.6.1.4.1.37950.1.1.5.10.12.5.4.0", kind: "system" },
+      { key: "hardwareVersion", label: "Hardware version", oid: "1.3.6.1.4.1.37950.1.1.5.10.12.5.5.0", kind: "system" },
+      { key: "serialNumber", label: "OLT serial number", oid: "1.3.6.1.4.1.37950.1.1.5.10.12.5.11.0", kind: "system" },
+      { key: "runState", label: "ONT run state", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.4", kind: "ont" },
+      { key: "mac", label: "ONT MAC address", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.5", kind: "ont" },
+      { key: "vendorId", label: "ONT vendor ID", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.3", kind: "ont" },
+      { key: "model", label: "ONT model ID", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.4", kind: "ont" },
+      { key: "ontName", label: "ONT description", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.9", kind: "ont" },
+      { key: "rttTq", label: "ONT RTT (TQ)", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.12", kind: "ont" },
+      { key: "distance", label: "ONT distance", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.17", kind: "ont" },
+      { key: "temperature", label: "ONT temperature", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.3", kind: "optical" },
+      { key: "txPower", label: "ONT TX power", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.6", kind: "optical" },
+      { key: "rxPower", label: "ONT RX power", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.7", kind: "optical" },
+      ...interfaceItems,
+    ],
+  },
+  {
+    key: "hioso-epon",
+    name: "HiOSO EPON",
+    enterpriseRoot: "1.3.6.1.4.1.25355",
+    items: [
+      ...systemItems,
+      { key: "deviceInfo", label: "Device Info", oid: "1.3.6.1.4.1.25355.3.1.8.1.1.2.1", kind: "system" },
+      { key: "ontName", label: "ONT name", oid: "1.3.6.1.4.1.25355.3.2.6.3.2.1.37", kind: "ont" },
+      { key: "mac", label: "ONT MAC address", oid: "1.3.6.1.4.1.25355.3.2.6.3.2.1.11", kind: "ont" },
+      { key: "runState", label: "ONT run state", oid: "1.3.6.1.4.1.25355.3.2.6.3.2.1.39", kind: "ont" },
+      { key: "distance", label: "ONT distance", oid: "1.3.6.1.4.1.25355.3.2.6.3.2.1.25", kind: "ont" },
+      { key: "txPower", label: "ONT TX power", oid: "1.3.6.1.4.1.25355.3.2.6.14.2.1.4", kind: "optical" },
+      { key: "rxPower", label: "ONT RX power", oid: "1.3.6.1.4.1.25355.3.2.6.14.2.1.8", kind: "optical" },
+      { key: "temperature", label: "ONT temperature", oid: "1.3.6.1.4.1.25355.3.2.6.14.2.1.7", kind: "optical" },
       ...interfaceItems,
     ],
   },

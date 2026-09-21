@@ -67,6 +67,40 @@ const vsolGponOids = {
   ifAlias: "1.3.6.1.2.1.31.1.1.1.18",
 }
 
+const vsolEponOids = {
+  onuInfoBase: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1",
+  status: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.4",
+  mac: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.5",
+  name: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.9",
+  rttTq: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.12",
+  type: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.13",
+  distance: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.17",
+  hardwareBase: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1",
+  vendorId: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.3",
+  modelId: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.4",
+  hwVersion: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.6",
+  swVersion: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.7",
+  opticalBase: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1",
+  temperature: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.3",
+  voltage: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.4",
+  biasCurrent: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.5",
+  txPower: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.6",
+  rxPower: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.7",
+}
+
+const hiosoEponOids = {
+  deviceInfo: "1.3.6.1.4.1.25355.3.1.8.1.1.2.1",
+  onuInfoBase: "1.3.6.1.4.1.25355.3.2.6.3.2.1",
+  mac: "1.3.6.1.4.1.25355.3.2.6.3.2.1.11",
+  distance: "1.3.6.1.4.1.25355.3.2.6.3.2.1.25",
+  name: "1.3.6.1.4.1.25355.3.2.6.3.2.1.37",
+  status: "1.3.6.1.4.1.25355.3.2.6.3.2.1.39",
+  opticalBase: "1.3.6.1.4.1.25355.3.2.6.14.2.1",
+  txPower: "1.3.6.1.4.1.25355.3.2.6.14.2.1.4",
+  temperature: "1.3.6.1.4.1.25355.3.2.6.14.2.1.7",
+  rxPower: "1.3.6.1.4.1.25355.3.2.6.14.2.1.8",
+}
+
 function valueToText(value: unknown) {
   if (Buffer.isBuffer(value)) {
     const text = value.toString("utf8").replace(/\0/g, "").trim()
@@ -293,13 +327,13 @@ function mapVsolInterfaceIndexes(ifDescrRows: SnmpRow[]) {
   return indexes
 }
 
-async function walk(snmp: typeof import("net-snmp"), session: SnmpSession, rootOid: string, maxRows = 12000) {
+async function walk(snmp: typeof import("net-snmp"), session: SnmpSession, rootOid: string, maxRows = 12000, maxRepetitions = 20) {
   const rows: SnmpRow[] = []
   let cursor = rootOid
 
   while (rows.length < maxRows) {
     const varbinds = await new Promise<Array<Array<{ oid: string; value: unknown }> | { oid: string; value: unknown }>>((resolve, reject) => {
-      session.getBulk([cursor], 0, 25, (error, result) => {
+      session.getBulk([cursor], 0, maxRepetitions, (error, result) => {
         if (error) {
           reject(error)
           return
@@ -552,6 +586,288 @@ async function pollVsolOnusFromOlt(snmp: typeof import("net-snmp"), session: Snm
   return mapVsolOnus(olt, [...onusByIndex.values()])
 }
 
+async function pollVsolEponOnusFromOlt(snmp: typeof import("net-snmp"), session: SnmpSession, olt: Olt) {
+  const [infoRows, hwRows, opticalRows] = await Promise.all([
+    walk(snmp, session, vsolEponOids.onuInfoBase, 8000),
+    walk(snmp, session, vsolEponOids.hardwareBase, 4000),
+    walk(snmp, session, vsolEponOids.opticalBase, 4000),
+  ])
+
+  const onusByIndex = new Map<string, {
+    ontIndex: string
+    ponPort: string
+    ontId: string
+    status: Onu["status"]
+    mac: string
+    vendorId: string
+    modelId: string
+    name: string
+    temperature: number | null
+    distance: number
+    rxPower: number
+    txPower: number
+  }>()
+
+  // Parse infoRows from 1.3.6.1.4.1.37950.1.1.5.12.1.25.1.<col>.<pon>.<onu>
+  for (const row of infoRows) {
+    if (!row.oid.startsWith(`${vsolEponOids.onuInfoBase}.`)) continue
+    const sub = row.oid.slice(vsolEponOids.onuInfoBase.length + 1)
+    const parts = sub.split(".")
+    if (parts.length < 3) continue
+
+    const col = parts[0]
+    const ponPort = parts[1]
+    const ontId = parts[2]
+    const indexKey = `${ponPort}.${ontId}`
+
+    if (!onusByIndex.has(indexKey)) {
+      onusByIndex.set(indexKey, {
+        ontIndex: indexKey,
+        ponPort,
+        ontId,
+        status: "offline",
+        mac: "-",
+        vendorId: "",
+        modelId: "",
+        name: "",
+        temperature: null,
+        distance: 0,
+        rxPower: 0,
+        txPower: 0,
+      })
+    }
+
+    const item = onusByIndex.get(indexKey)!
+
+    if (col === "4") {
+      item.status = String(row.value).trim() === "1" ? "online" : "offline"
+    } else if (col === "5") {
+      item.mac = String(row.value).trim() || "-"
+    } else if (col === "9") {
+      const name = String(row.value).trim()
+      if (name && name !== "NULL") {
+        item.name = name
+      }
+    } else if (col === "17") {
+      const num = Number(row.value)
+      if (Number.isFinite(num)) {
+        item.distance = num
+      }
+    }
+  }
+
+  // Parse hwRows from 1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.<col>.<pon>.<onu>
+  for (const row of hwRows) {
+    if (row.oid.startsWith(`${vsolEponOids.vendorId}.`)) {
+      const indexKey = row.oid.slice(vsolEponOids.vendorId.length + 1)
+      const item = onusByIndex.get(indexKey)
+      if (item) item.vendorId = String(row.value || "").trim()
+    } else if (row.oid.startsWith(`${vsolEponOids.modelId}.`)) {
+      const indexKey = row.oid.slice(vsolEponOids.modelId.length + 1)
+      const item = onusByIndex.get(indexKey)
+      if (item) item.modelId = String(row.value || "").trim()
+    }
+  }
+
+  // Parse opticalRows from 1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.<col>.<pon>.<onu>
+  const parseDbm = (str: string) => {
+    const match = String(str || "").match(/\(([-+]?\d+(?:\.\d+)?)\s*dBm\)/i)
+    return match ? Number(match[1]) : 0
+  }
+
+  const parseTemp = (str: string) => {
+    const match = String(str || "").match(/([-+]?\d+(?:\.\d+)?)\s*C/i)
+    return match ? Number(match[1]) : null
+  }
+
+  for (const row of opticalRows) {
+    if (row.oid.startsWith(`${vsolEponOids.temperature}.`)) {
+      const indexKey = row.oid.slice(vsolEponOids.temperature.length + 1)
+      const item = onusByIndex.get(indexKey)
+      if (item) {
+        item.temperature = parseTemp(row.value)
+      }
+    } else if (row.oid.startsWith(`${vsolEponOids.txPower}.`)) {
+      const indexKey = row.oid.slice(vsolEponOids.txPower.length + 1)
+      const item = onusByIndex.get(indexKey)
+      if (item) {
+        item.txPower = parseDbm(row.value)
+      }
+    } else if (row.oid.startsWith(`${vsolEponOids.rxPower}.`)) {
+      const indexKey = row.oid.slice(vsolEponOids.rxPower.length + 1)
+      const item = onusByIndex.get(indexKey)
+      if (item) {
+        item.rxPower = parseDbm(row.value)
+      }
+    }
+  }
+
+  return [...onusByIndex.values()]
+    .map((item) => {
+      const fallbackName = item.mac && item.mac !== "-" ? `ONU-${item.mac.toUpperCase()}` : `ONU-${item.ponPort}/${item.ontId}`
+
+      return {
+        id: `${olt.id}-${item.ontIndex}`,
+        oltId: olt.id,
+        name: item.name || fallbackName,
+        serialNumber: item.mac,
+        ponPort: item.ponPort,
+        onuIndex: item.ontId,
+        status: item.status,
+        rxPower: item.rxPower,
+        txPower: item.txPower,
+        temperatureC: item.temperature,
+        downReason: null,
+        distanceMeters: item.distance,
+        lastSeen: "Baru saja",
+        syncStatus: "synced" as const,
+      } satisfies Onu
+    })
+    .sort((a, b) => {
+      const aPon = Number(a.ponPort)
+      const bPon = Number(b.ponPort)
+      if (aPon !== bPon) return aPon - bPon
+      return Number(a.onuIndex) - Number(b.onuIndex)
+    })
+}
+
+function formatHiosoMac(raw: string) {
+  const clean = raw.trim().replace(/[^0-9a-fA-F]/g, "").toUpperCase()
+  if (clean.length === 12) {
+    return clean.match(/.{1,2}/g)?.join(":") || clean
+  }
+  return raw || "-"
+}
+
+async function pollHiosoEponOnusFromOlt(snmp: typeof import("net-snmp"), session: SnmpSession, olt: Olt) {
+  const infoRows = await walk(snmp, session, hiosoEponOids.onuInfoBase, 12000, 20)
+  const opticalRows = await walk(snmp, session, hiosoEponOids.opticalBase, 12000, 20)
+
+  const onusByIndex = new Map<string, {
+    ontIndex: string
+    ponPort: string
+    ontId: string
+    status: Onu["status"]
+    mac: string
+    name: string
+    temperature: number | null
+    distance: number
+    rxPower: number
+    txPower: number
+  }>()
+
+  // Parse infoRows from 1.3.6.1.4.1.25355.3.2.6.3.2.1.<col>.1.<pon>.<onu>
+  for (const row of infoRows) {
+    if (!row.oid.startsWith(`${hiosoEponOids.onuInfoBase}.`)) continue
+    const sub = row.oid.slice(hiosoEponOids.onuInfoBase.length + 1)
+    const parts = sub.split(".")
+    if (parts.length < 4 || parts[1] !== "1") continue
+
+    const col = parts[0]
+    const ponPort = parts[2]
+    const ontId = parts[3]
+    const indexKey = `${ponPort}.${ontId}`
+
+    if (!onusByIndex.has(indexKey)) {
+      onusByIndex.set(indexKey, {
+        ontIndex: indexKey,
+        ponPort,
+        ontId,
+        status: "offline",
+        mac: "-",
+        name: "",
+        temperature: null,
+        distance: 0,
+        rxPower: 0,
+        txPower: 0,
+      })
+    }
+
+    const item = onusByIndex.get(indexKey)!
+
+    if (col === "11") {
+      item.mac = formatHiosoMac(String(row.value).trim())
+    } else if (col === "25") {
+      const num = Number(row.value)
+      if (Number.isFinite(num)) {
+        item.distance = num
+      }
+    } else if (col === "37") {
+      const name = String(row.value).trim()
+      if (name && name !== "NULL") {
+        item.name = name
+      }
+    } else if (col === "39") {
+      item.status = String(row.value).trim() === "1" ? "online" : "offline"
+    }
+  }
+
+  // Parse opticalRows from 1.3.6.1.4.1.25355.3.2.6.14.2.1.<col>.1.<pon>.<onu>
+  const parseDbm = (str: string) => {
+    const match = String(str || "").match(/([-+]?\d+(?:\.\d+)?)/)
+    if (!match) return 0
+    const val = Number(match[1])
+    return Number.isFinite(val) && val > -100 && val < 50 ? val : 0
+  }
+
+  const parseTemp = (str: string) => {
+    const match = String(str || "").match(/([-+]?\d+(?:\.\d+)?)/)
+    if (!match) return null
+    const val = Number(match[1])
+    return Number.isFinite(val) && val > -50 && val < 150 ? val : null
+  }
+
+  for (const row of opticalRows) {
+    if (!row.oid.startsWith(`${hiosoEponOids.opticalBase}.`)) continue
+    const sub = row.oid.slice(hiosoEponOids.opticalBase.length + 1)
+    const parts = sub.split(".")
+    if (parts.length < 4 || parts[1] !== "1") continue
+
+    const col = parts[0]
+    const ponPort = parts[2]
+    const ontId = parts[3]
+    const indexKey = `${ponPort}.${ontId}`
+    const item = onusByIndex.get(indexKey)
+    if (!item) continue
+
+    if (col === "4") {
+      item.txPower = parseDbm(row.value)
+    } else if (col === "7") {
+      item.temperature = parseTemp(row.value)
+    } else if (col === "8") {
+      item.rxPower = parseDbm(row.value)
+    }
+  }
+
+  return [...onusByIndex.values()]
+    .map((item) => {
+      const fallbackName = item.mac && item.mac !== "-" ? `ONU-${item.mac}` : `ONU-${item.ponPort}/${item.ontId}`
+
+      return {
+        id: `${olt.id}-${item.ontIndex}`,
+        oltId: olt.id,
+        name: item.name || fallbackName,
+        serialNumber: item.mac,
+        ponPort: item.ponPort,
+        onuIndex: item.ontId,
+        status: item.status,
+        rxPower: item.rxPower,
+        txPower: item.txPower,
+        temperatureC: item.temperature,
+        downReason: null,
+        distanceMeters: item.distance,
+        lastSeen: "Baru saja",
+        syncStatus: "synced" as const,
+      } satisfies Onu
+    })
+    .sort((a, b) => {
+      const aPon = Number(a.ponPort)
+      const bPon = Number(b.ponPort)
+      if (aPon !== bPon) return aPon - bPon
+      return Number(a.onuIndex) - Number(b.onuIndex)
+    })
+}
+
 export async function testSnmpConnection(olt: SnmpTestTarget) {
   if (!olt.ipAddress || !olt.readCommunity) {
     return {
@@ -607,10 +923,16 @@ export async function pollOnusFromOlt(olt: Olt) {
     }
   }
 
-  if (olt.oidProfile !== "hsgq-gpon" && olt.oidProfile !== "hsgq-epon" && olt.oidProfile !== "vsol-gpon") {
+  if (
+    olt.oidProfile !== "hsgq-gpon" &&
+    olt.oidProfile !== "hsgq-epon" &&
+    olt.oidProfile !== "vsol-gpon" &&
+    olt.oidProfile !== "vsol-epon" &&
+    olt.oidProfile !== "hioso-epon"
+  ) {
     return {
       ok: false,
-      message: `Polling ONU untuk profile ${olt.oidProfile} belum aktif. Saat ini yang aktif: VSOL GPON, HSGQ GPON/EPON.`,
+      message: `Polling ONU untuk profile ${olt.oidProfile} belum aktif. Saat ini yang aktif: VSOL GPON/EPON, HSGQ GPON/EPON, HiOSO EPON.`,
       onus: [] as Onu[],
     }
   }
@@ -621,6 +943,26 @@ export async function pollOnusFromOlt(olt: Olt) {
   try {
     if (olt.oidProfile === "vsol-gpon") {
       const onus = await pollVsolOnusFromOlt(snmp, session, olt)
+
+      return {
+        ok: true,
+        message: `Polling ONU selesai. Ditemukan ${onus.length} ONU/ONT dari ${olt.name}.`,
+        onus,
+      }
+    }
+
+    if (olt.oidProfile === "vsol-epon") {
+      const onus = await pollVsolEponOnusFromOlt(snmp, session, olt)
+
+      return {
+        ok: true,
+        message: `Polling ONU selesai. Ditemukan ${onus.length} ONU/ONT dari ${olt.name}.`,
+        onus,
+      }
+    }
+
+    if (olt.oidProfile === "hioso-epon") {
+      const onus = await pollHiosoEponOnusFromOlt(snmp, session, olt)
 
       return {
         ok: true,

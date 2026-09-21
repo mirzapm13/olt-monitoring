@@ -131,9 +131,11 @@ function formatNumber(value: number) {
 }
 
 function profileForVendor(vendor: Olt["vendor"]): OidProfileKey {
-  if (vendor === "VSOL") return "vsol-gpon"
+  if (vendor === "VSOL" || vendor === "VSOL GPON") return "vsol-gpon"
+  if (vendor === "VSOL EPON") return "vsol-epon"
   if (vendor === "HSGQ GPON") return "hsgq-gpon"
   if (vendor === "HSGQ EPON") return "hsgq-epon"
+  if (vendor === "HiOSO EPON") return "hioso-epon"
   return "generic"
 }
 
@@ -1127,7 +1129,7 @@ function OltFormPanel({
             label="Vendor"
             value={form.vendor}
             onChange={(value) => onVendorChange(value as Olt["vendor"])}
-            options={["VSOL", "HSGQ GPON", "HSGQ EPON", "Huawei", "ZTE", "FiberHome", "Other"]}
+            options={["VSOL GPON", "VSOL EPON", "HSGQ GPON", "HSGQ EPON", "HiOSO EPON", "Huawei", "ZTE", "FiberHome", "Other"]}
           />
           <SelectInput
             label="Mode rename ONU"
@@ -2271,7 +2273,9 @@ function friendlySystemValue(olt: Olt, field: "name" | "firmware" | "location") 
   const map = {
     name: values["1.3.6.1.2.1.1.5.0"] || olt.name,
     firmware:
+      cleanDisplayValue(values["1.3.6.1.4.1.25355.3.1.8.1.1.2.1"]) ||
       cleanDisplayValue(values["1.3.6.1.4.1.50224.3.1.1.6.0"]) ||
+      cleanDisplayValue(values["1.3.6.1.4.1.37950.1.1.5.10.12.5.4.0"]) ||
       cleanDisplayValue(values["1.3.6.1.4.1.37950.1.1.5.10.14.6.0"]) ||
       cleanDisplayValue(values["1.3.6.1.4.1.37950.1.1.5.10.14.5.0"]) ||
       "-",
@@ -2289,6 +2293,7 @@ function cleanDisplayValue(value: string | undefined) {
 
 function deviceTypeFromSystem(values: Record<string, string> | undefined, fallback: string) {
   return (
+    cleanDisplayValue(values?.["1.3.6.1.4.1.25355.3.1.8.1.1.2.1"]) ||
     cleanDisplayValue(values?.["1.3.6.1.4.1.50224.3.1.1.19.0"]) ||
     cleanDisplayValue(values?.["1.3.6.1.4.1.37950.1.1.5.10.14.1.0"]) ||
     cleanDisplayValue(values?.["1.3.6.1.2.1.1.1.0"]) ||
