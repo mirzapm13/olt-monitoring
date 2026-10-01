@@ -6,7 +6,19 @@ export type Olt = {
   id: string
   name: string
   ipAddress: string
-  vendor: "VSOL" | "VSOL GPON" | "VSOL EPON" | "HSGQ GPON" | "HSGQ EPON" | "HiOSO EPON" | "Huawei" | "ZTE" | "FiberHome" | "Other"
+  vendor:
+    | "VSOL"
+    | "VSOL GPON"
+    | "VSOL EPON"
+    | "VSOL EPON V16004DL"
+    | "VSOL EPON V1600D8"
+    | "HSGQ GPON"
+    | "HSGQ EPON"
+    | "HiOSO EPON"
+    | "Huawei"
+    | "ZTE"
+    | "FiberHome"
+    | "Other"
   model: string
   location: string
   status: OltStatus
@@ -20,7 +32,7 @@ export type Olt = {
   snmpPort: number
   readCommunity: string
   writeCommunity?: string
-  oidProfile: "vsol-gpon" | "vsol-epon" | "hsgq-gpon" | "hsgq-epon" | "hioso-epon" | "generic"
+  oidProfile: "vsol-gpon" | "vsol-epon" | "vsol-epon-v16004dl" | "vsol-epon-v1600d8" | "hsgq-gpon" | "hsgq-epon" | "hioso-epon" | "generic"
   writeMode: "none" | "snmp" | "cli" | "api"
   lastSeen: string
   systemInfo?: Record<string, string>

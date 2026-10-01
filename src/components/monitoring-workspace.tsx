@@ -132,7 +132,9 @@ function formatNumber(value: number) {
 
 function profileForVendor(vendor: Olt["vendor"]): OidProfileKey {
   if (vendor === "VSOL" || vendor === "VSOL GPON") return "vsol-gpon"
-  if (vendor === "VSOL EPON") return "vsol-epon"
+  if (vendor === "VSOL EPON V16004DL") return "vsol-epon-v16004dl"
+  if (vendor === "VSOL EPON V1600D8") return "vsol-epon-v1600d8"
+  if (vendor === "VSOL EPON") return "vsol-epon-v1600d8"
   if (vendor === "HSGQ GPON") return "hsgq-gpon"
   if (vendor === "HSGQ EPON") return "hsgq-epon"
   if (vendor === "HiOSO EPON") return "hioso-epon"
@@ -1129,7 +1131,18 @@ function OltFormPanel({
             label="Vendor"
             value={form.vendor}
             onChange={(value) => onVendorChange(value as Olt["vendor"])}
-            options={["VSOL GPON", "VSOL EPON", "HSGQ GPON", "HSGQ EPON", "HiOSO EPON", "Huawei", "ZTE", "FiberHome", "Other"]}
+            options={[
+              "VSOL GPON",
+              "VSOL EPON V16004DL",
+              "VSOL EPON V1600D8",
+              "HSGQ GPON",
+              "HSGQ EPON",
+              "HiOSO EPON",
+              "Huawei",
+              "ZTE",
+              "FiberHome",
+              "Other",
+            ]}
           />
           <SelectInput
             label="Mode rename ONU"

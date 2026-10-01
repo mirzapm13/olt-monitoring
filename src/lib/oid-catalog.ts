@@ -1,4 +1,12 @@
-export type OidProfileKey = "generic" | "vsol-gpon" | "vsol-epon" | "hsgq-gpon" | "hsgq-epon" | "hioso-epon"
+export type OidProfileKey =
+  | "generic"
+  | "vsol-gpon"
+  | "vsol-epon"
+  | "vsol-epon-v16004dl"
+  | "vsol-epon-v1600d8"
+  | "hsgq-gpon"
+  | "hsgq-epon"
+  | "hioso-epon"
 
 export type OidItem = {
   key: string
@@ -25,6 +33,44 @@ const systemItems: OidItem[] = [
 const interfaceItems: OidItem[] = [
   { key: "ifDescr", label: "Interface description", oid: "1.3.6.1.2.1.2.2.1.2", kind: "interface" },
   { key: "ifOperStatus", label: "Interface operational status", oid: "1.3.6.1.2.1.2.2.1.8", kind: "interface" },
+]
+
+const vsolEponV16004dlItems: OidItem[] = [
+  ...systemItems,
+  { key: "productModel", label: "Product model", oid: "1.3.6.1.4.1.37950.1.1.5.10.14.1.0", kind: "system" },
+  { key: "firmwareVersion", label: "Firmware version", oid: "1.3.6.1.4.1.37950.1.1.5.10.12.5.4.0", kind: "system" },
+  { key: "hardwareVersion", label: "Hardware version", oid: "1.3.6.1.4.1.37950.1.1.5.10.12.5.5.0", kind: "system" },
+  { key: "serialNumber", label: "OLT serial number", oid: "1.3.6.1.4.1.37950.1.1.5.10.12.5.11.0", kind: "system" },
+  { key: "runState", label: "ONT run state", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.4", kind: "ont" },
+  { key: "mac", label: "ONT MAC address", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.5", kind: "ont" },
+  { key: "vendorId", label: "ONT vendor ID", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.3", kind: "ont" },
+  { key: "model", label: "ONT model ID", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.4", kind: "ont" },
+  { key: "ontName", label: "ONT description", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.9", kind: "ont" },
+  { key: "rttTq", label: "ONT RTT (TQ)", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.12", kind: "ont" },
+  { key: "distance", label: "ONT distance", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.17", kind: "ont" },
+  { key: "temperature", label: "ONT temperature", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.3", kind: "optical" },
+  { key: "txPower", label: "ONT TX power", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.6", kind: "optical" },
+  { key: "rxPower", label: "ONT RX power", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.7", kind: "optical" },
+  ...interfaceItems,
+]
+
+const vsolEponV1600d8Items: OidItem[] = [
+  ...systemItems,
+  { key: "productModel", label: "Product model", oid: "1.3.6.1.4.1.37950.1.1.5.10.14.1.0", kind: "system" },
+  { key: "firmwareVersion", label: "Firmware version", oid: "1.3.6.1.4.1.37950.1.1.5.10.12.5.4.0", kind: "system" },
+  { key: "hardwareVersion", label: "Hardware version", oid: "1.3.6.1.4.1.37950.1.1.5.10.12.5.5.0", kind: "system" },
+  { key: "serialNumber", label: "OLT serial number", oid: "1.3.6.1.4.1.37950.1.1.5.10.12.5.11.0", kind: "system" },
+  { key: "runState", label: "ONT run state", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.4", kind: "ont" },
+  { key: "mac", label: "ONT MAC address", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.5", kind: "ont" },
+  { key: "vendorId", label: "ONT vendor ID", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.3", kind: "ont" },
+  { key: "model", label: "ONT model ID", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.4", kind: "ont" },
+  { key: "ontName", label: "ONT description", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.9", kind: "ont" },
+  { key: "rttTq", label: "ONT RTT (TQ)", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.12", kind: "ont" },
+  { key: "distance", label: "ONT distance", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.17", kind: "ont" },
+  { key: "temperature", label: "ONT temperature", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.13.1.3", kind: "optical" },
+  { key: "txPower", label: "ONT TX power", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.13.1.6", kind: "optical" },
+  { key: "rxPower", label: "ONT RX power", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.13.1.7", kind: "optical" },
+  ...interfaceItems,
 ]
 
 export const oidProfiles: OidProfile[] = [
@@ -56,26 +102,21 @@ export const oidProfiles: OidProfile[] = [
   },
   {
     key: "vsol-epon",
-    name: "VSOL EPON",
+    name: "VSOL EPON (Generic)",
     enterpriseRoot: "1.3.6.1.4.1.37950",
-    items: [
-      ...systemItems,
-      { key: "productModel", label: "Product model", oid: "1.3.6.1.4.1.37950.1.1.5.10.14.1.0", kind: "system" },
-      { key: "firmwareVersion", label: "Firmware version", oid: "1.3.6.1.4.1.37950.1.1.5.10.12.5.4.0", kind: "system" },
-      { key: "hardwareVersion", label: "Hardware version", oid: "1.3.6.1.4.1.37950.1.1.5.10.12.5.5.0", kind: "system" },
-      { key: "serialNumber", label: "OLT serial number", oid: "1.3.6.1.4.1.37950.1.1.5.10.12.5.11.0", kind: "system" },
-      { key: "runState", label: "ONT run state", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.4", kind: "ont" },
-      { key: "mac", label: "ONT MAC address", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.5", kind: "ont" },
-      { key: "vendorId", label: "ONT vendor ID", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.3", kind: "ont" },
-      { key: "model", label: "ONT model ID", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.4", kind: "ont" },
-      { key: "ontName", label: "ONT description", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.9", kind: "ont" },
-      { key: "rttTq", label: "ONT RTT (TQ)", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.12", kind: "ont" },
-      { key: "distance", label: "ONT distance", oid: "1.3.6.1.4.1.37950.1.1.5.12.1.25.1.17", kind: "ont" },
-      { key: "temperature", label: "ONT temperature", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.3", kind: "optical" },
-      { key: "txPower", label: "ONT TX power", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.6", kind: "optical" },
-      { key: "rxPower", label: "ONT RX power", oid: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.7", kind: "optical" },
-      ...interfaceItems,
-    ],
+    items: vsolEponV1600d8Items,
+  },
+  {
+    key: "vsol-epon-v16004dl",
+    name: "VSOL EPON V16004DL",
+    enterpriseRoot: "1.3.6.1.4.1.37950",
+    items: vsolEponV16004dlItems,
+  },
+  {
+    key: "vsol-epon-v1600d8",
+    name: "VSOL EPON V1600D8",
+    enterpriseRoot: "1.3.6.1.4.1.37950",
+    items: vsolEponV1600d8Items,
   },
   {
     key: "hioso-epon",

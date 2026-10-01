@@ -81,6 +81,7 @@ const vsolEponOids = {
   hwVersion: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.6",
   swVersion: "1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.7",
   opticalBase: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1",
+  opticalBaseAlt: "1.3.6.1.4.1.37950.1.1.5.12.2.1.13.1",
   temperature: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.3",
   voltage: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.4",
   biasCurrent: "1.3.6.1.4.1.37950.1.1.5.12.2.1.8.1.5",
@@ -587,11 +588,12 @@ async function pollVsolOnusFromOlt(snmp: typeof import("net-snmp"), session: Snm
 }
 
 async function pollVsolEponOnusFromOlt(snmp: typeof import("net-snmp"), session: SnmpSession, olt: Olt) {
-  const [infoRows, hwRows, opticalRows] = await Promise.all([
-    walk(snmp, session, vsolEponOids.onuInfoBase, 8000),
-    walk(snmp, session, vsolEponOids.hardwareBase, 4000),
-    walk(snmp, session, vsolEponOids.opticalBase, 4000),
-  ])
+  const infoRows = await walk(snmp, session, vsolEponOids.onuInfoBase, 8000)
+  const hwRows = await walk(snmp, session, vsolEponOids.hardwareBase, 4000)
+  let opticalRows = await walk(snmp, session, vsolEponOids.opticalBase, 4000)
+  if (opticalRows.length === 0) {
+    opticalRows = await walk(snmp, session, vsolEponOids.opticalBaseAlt, 4000)
+  }
 
   const onusByIndex = new Map<string, {
     ontIndex: string
@@ -681,24 +683,21 @@ async function pollVsolEponOnusFromOlt(snmp: typeof import("net-snmp"), session:
   }
 
   for (const row of opticalRows) {
-    if (row.oid.startsWith(`${vsolEponOids.temperature}.`)) {
-      const indexKey = row.oid.slice(vsolEponOids.temperature.length + 1)
-      const item = onusByIndex.get(indexKey)
-      if (item) {
-        item.temperature = parseTemp(row.value)
-      }
-    } else if (row.oid.startsWith(`${vsolEponOids.txPower}.`)) {
-      const indexKey = row.oid.slice(vsolEponOids.txPower.length + 1)
-      const item = onusByIndex.get(indexKey)
-      if (item) {
-        item.txPower = parseDbm(row.value)
-      }
-    } else if (row.oid.startsWith(`${vsolEponOids.rxPower}.`)) {
-      const indexKey = row.oid.slice(vsolEponOids.rxPower.length + 1)
-      const item = onusByIndex.get(indexKey)
-      if (item) {
-        item.rxPower = parseDbm(row.value)
-      }
+    const parts = row.oid.split(".")
+    if (parts.length < 3) continue
+    const col = parts[parts.length - 3]
+    const ponPort = parts[parts.length - 2]
+    const ontId = parts[parts.length - 1]
+    const indexKey = `${ponPort}.${ontId}`
+    const item = onusByIndex.get(indexKey)
+    if (!item) continue
+
+    if (col === "3") {
+      item.temperature = parseTemp(row.value)
+    } else if (col === "6") {
+      item.txPower = parseDbm(row.value)
+    } else if (col === "7") {
+      item.rxPower = parseDbm(row.value)
     }
   }
 
@@ -928,6 +927,8 @@ export async function pollOnusFromOlt(olt: Olt) {
     olt.oidProfile !== "hsgq-epon" &&
     olt.oidProfile !== "vsol-gpon" &&
     olt.oidProfile !== "vsol-epon" &&
+    olt.oidProfile !== "vsol-epon-v16004dl" &&
+    olt.oidProfile !== "vsol-epon-v1600d8" &&
     olt.oidProfile !== "hioso-epon"
   ) {
     return {
@@ -951,7 +952,7 @@ export async function pollOnusFromOlt(olt: Olt) {
       }
     }
 
-    if (olt.oidProfile === "vsol-epon") {
+    if (olt.oidProfile === "vsol-epon" || olt.oidProfile === "vsol-epon-v16004dl" || olt.oidProfile === "vsol-epon-v1600d8") {
       const onus = await pollVsolEponOnusFromOlt(snmp, session, olt)
 
       return {
