@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Olt {
+  id              String   @id
+  name            String
+  ipAddress       String
+  vendor          String
+  model           String   @default("")
+  location        String   @default("")
+  status          String   @default("offline")
+  uptime          String   @default("0")
+  cpuLoad         Float    @default(0)
+  memoryLoad      Float    @default(0)
+  ponPorts        Int      @default(0)
+  activeOnu       Int      @default(0)
+  pollingInterval Int      @default(60)
+  snmpVersion     String   @default("v2c")
+  snmpPort        Int      @default(161)
+  readCommunity   String
+  writeCommunity  String?
+  oidProfile      String
+  writeMode       String   @default("none")
+  lastSeen        String   @default("Belum pernah")
+  systemInfo      Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  onus   Onu[]
+  alerts Alert[]
+
+  @@map("olts")
+}
+
+model Onu {
+  id             String   @id
+  oltId          String
+  name           String
+  serialNumber   String
+  ponPort        String
+  onuIndex       String
+  status         String   @default("offline")
+  rxPower        Float    @default(0)
+  txPower        Float    @default(0)
+  temperatureC   Float?
+  downReason     String?
+  distanceMeters Int      @default(0)
+  lastSeen       String   @default("Baru saja")
+  syncStatus     String   @default("synced")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  olt Olt @relation(fields: [oltId], references: [id], onDelete: Cascade)
+
+  @@index([oltId])
+  @@index([serialNumber])
+  @@map("onus")
+}
+
+model Alert {
+  id           String   @id
+  oltId        String
+  title        String
+  detail       String
+  severity     String
+  acknowledged Boolean  @default(false)
+  createdAt    String
+  storedAt     DateTime @default(now())
+
+  olt Olt @relation(fields: [oltId], references: [id], onDelete: Cascade)
+
+  @@index([oltId])
+  @@map("alerts")
+}
+
+model TelegramSetting {
+  id                 Int      @id @default(1)
+  enabled            Boolean  @default(false)
+  botToken           String   @default("")
+  chatId             String   @default("")
+  notifyOntDown      Boolean  @default(true)
+  notifyRecovery     Boolean  @default(true)
+  botPollingEnabled Boolean  @default(false)
+  lastUpdateId       Int      @default(0)
+  updatedAt          DateTime @updatedAt
+
+  @@map("telegram_settings")
+}
+
+model User {
+  id           String   @id
+  username     String   @unique
+  name         String
+  passwordHash String
+  role         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("users")
+}
+
+model AuditLog {
+  id        String   @id
+  action    String
+  detail    String
+  actor     String
+  createdAt String
+  timestamp DateTime @default(now())
+
+  @@map("audit_logs")
+}

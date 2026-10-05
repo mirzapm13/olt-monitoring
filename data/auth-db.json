@@ -19,5 +19,13 @@
       "updatedAt": "17/7/2026, 10.45.08"
     }
   ],
-  "auditLogs": []
+  "auditLogs": [
+    {
+      "id": "audit-1791178181155-640ce69b-27da-4bae-ae4c-4f7c87569f63",
+      "actor": "superadmin",
+      "action": "login_success",
+      "detail": "Login berhasil.",
+      "createdAt": "5/10/2026, 12.29.41"
+    }
+  ]
 }

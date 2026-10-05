@@ -2,7 +2,7 @@
 
 import { CircleAlert, CircleCheck, Database, Eye, EyeOff, HeartHandshake, Info, Mail, MessageCircle, Pencil, Plus, Power, RefreshCcw, Router, Save, Search, Shield, Trash2, UserCog, Wifi, X } from "lucide-react"
 import Image from "next/image"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { authStorageKey, roleDescriptions, roleLabels, type AppRole, type AuthAuditLog, type AuthSession, type PublicUser } from "@/lib/auth-types"
 import type { OidProfileKey } from "@/lib/oid-catalog"
@@ -187,7 +187,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
   const [storedState, setStoredState] = useState<MonitoringState>(emptyState)
   const [selectedOltId, setSelectedOltId] = useState("")
   const [editingOltId, setEditingOltId] = useState<string | null>(null)
-  const [pollingOltId, setPollingOltId] = useState<string | null>(null)
+  const [activePollingIds, setActivePollingIds] = useState<string[]>([])
   const [query, setQuery] = useState("")
   const [editingOnuId, setEditingOnuId] = useState<string | null>(null)
   const [draftName, setDraftName] = useState("")
@@ -248,6 +248,57 @@ export function MonitoringWorkspace({ view }: { view: View }) {
       cancelled = true
     }
   }, [])
+
+  const syncServerActivePolls = useCallback(async () => {
+    try {
+      const res = await fetch("/api/snmp/poll-onu")
+      if (!res.ok) return
+      const data = (await res.json()) as { activePolls?: string[] }
+      if (Array.isArray(data.activePolls)) {
+        setActivePollingIds((current) => {
+          const isSame =
+            current.length === data.activePolls!.length &&
+            current.every((id) => data.activePolls!.includes(id))
+          return isSame ? current : data.activePolls!
+        })
+      }
+    } catch {
+      // Ignore network errors on active poll check
+    }
+  }, [])
+
+  useEffect(() => {
+    void syncServerActivePolls()
+  }, [syncServerActivePolls])
+
+  useEffect(() => {
+    if (activePollingIds.length === 0) return
+
+    const interval = window.setInterval(async () => {
+      try {
+        const res = await fetch("/api/snmp/poll-onu")
+        if (!res.ok) return
+        const data = (await res.json()) as { activePolls?: string[] }
+        if (Array.isArray(data.activePolls)) {
+          if (data.activePolls.length === 0) {
+            const stateRes = await fetch("/api/monitoring/state")
+            if (stateRes.ok) {
+              const nextState = (await stateRes.json()) as MonitoringState
+              stateRef.current = nextState
+              setStoredState(nextState)
+            }
+            setActivePollingIds([])
+          } else {
+            setActivePollingIds(data.activePolls)
+          }
+        }
+      } catch {
+        // Ignore network errors on polling status check
+      }
+    }, 1500)
+
+    return () => window.clearInterval(interval)
+  }, [activePollingIds.length])
 
   useEffect(() => {
     if (!toast) return
@@ -316,6 +367,9 @@ export function MonitoringWorkspace({ view }: { view: View }) {
   const downOnu = onus.filter((onu) => onu.status !== "online").length
   const operationalAlerts = buildOperationalAlerts(olts, onus, alerts)
   const openAlerts = operationalAlerts.filter((alert) => !alert.acknowledged).length
+  const activelyPollingOltNames = olts
+    .filter((olt) => activePollingIds.includes(olt.id))
+    .map((olt) => olt.name)
 
   function updateForm<K extends keyof OltForm>(key: K, value: OltForm[K]) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -583,9 +637,9 @@ export function MonitoringWorkspace({ view }: { view: View }) {
 
     const silent = Boolean(options.silent)
     pollingLocksRef.current.add(olt.id)
+    setActivePollingIds((prev) => (prev.includes(olt.id) ? prev : [...prev, olt.id]))
     if (!silent) {
       setNotice(`Membaca data ONU/ONT dari ${olt.name}...`)
-      setPollingOltId(olt.id)
     }
 
     try {
@@ -647,7 +701,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
       if (!silent) setNotice(error instanceof Error ? error.message : "Polling ONU gagal.")
     } finally {
       pollingLocksRef.current.delete(olt.id)
-      if (!silent) setPollingOltId(null)
+      setActivePollingIds((prev) => prev.filter((id) => id !== olt.id))
     }
   }
 
@@ -699,6 +753,15 @@ export function MonitoringWorkspace({ view }: { view: View }) {
         />
       )}
 
+      {activePollingIds.length > 0 && (
+        <div className="mb-4 flex items-center gap-2 text-cyan-800 dark:text-cyan-200 bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-300 dark:border-cyan-800 px-4 py-2.5 rounded-2xl text-sm font-medium animate-pulse shadow-sm">
+          <RefreshCcw className="h-4 w-4 animate-spin text-cyan-600 dark:text-cyan-400 shrink-0" aria-hidden="true" />
+          <span>
+            Polling SNMP sedang berlangsung untuk: <strong>{activelyPollingOltNames.join(", ") || "perangkat OLT"}</strong>
+          </span>
+        </div>
+      )}
+
       {(view === "dashboard" || view === "olts") && (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard label="OLT Online" value={`${onlineOlts}/${olts.length}`} detail="Berdasarkan test SNMP terakhir" tone="cyan" />
@@ -708,7 +771,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
         </div>
       )}
 
-      {view === "dashboard" && <DashboardView olts={olts} alerts={operationalAlerts} notice={notice} />}
+      {view === "dashboard" && <DashboardView olts={olts} alerts={operationalAlerts} notice={notice} activePollingIds={activePollingIds} />}
 
       {view === "olts" && (
         <section className="mt-4 grid gap-4 xl:grid-cols-[420px_1fr]">
@@ -729,7 +792,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
             onTest={testConnection}
             onTestWrite={testWriteCommunity}
             onPollOnu={pollOnu}
-            pollingOltId={pollingOltId}
+            activePollingIds={activePollingIds}
             onRemove={setDeleteCandidate}
           />
         </section>
@@ -749,7 +812,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
           onStartRename={startRename}
           onSaveRename={saveRename}
           onPollOnu={pollOnu}
-          pollingOltId={pollingOltId}
+          activePollingIds={activePollingIds}
         />
       )}
 
@@ -956,7 +1019,7 @@ function ClearAlertsDialog({
   )
 }
 
-function DashboardView({ olts, alerts, notice }: { olts: Olt[]; alerts: Alert[]; notice: string }) {
+function DashboardView({ olts, alerts, notice, activePollingIds }: { olts: Olt[]; alerts: Alert[]; notice: string; activePollingIds: string[] }) {
   return (
     <section className="mt-4 grid gap-4 xl:grid-cols-[1fr_360px]">
       <div className={panelClass}>
@@ -972,7 +1035,7 @@ function DashboardView({ olts, alerts, notice }: { olts: Olt[]; alerts: Alert[];
         ) : (
           <div className={tableShellClass}>
             {olts.map((olt) => (
-              <OltSummary key={olt.id} olt={olt} />
+              <OltSummary key={olt.id} olt={olt} isPolling={activePollingIds.includes(olt.id)} />
             ))}
           </div>
         )}
@@ -1044,7 +1107,7 @@ function oltAccent(olt: Olt) {
   }
 }
 
-function OltSummary({ olt }: { olt: Olt }) {
+function OltSummary({ olt, isPolling }: { olt: Olt; isPolling?: boolean }) {
   const accent = oltAccent(olt)
 
   return (
@@ -1062,7 +1125,15 @@ function OltSummary({ olt }: { olt: Olt }) {
             </p>
           </div>
         </div>
-        <StatusBadge value={olt.status} />
+        <div className="flex items-center gap-2">
+          {isPolling && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 animate-pulse">
+              <RefreshCcw className="h-3 w-3 animate-spin text-cyan-500" aria-hidden="true" />
+              Polling SNMP...
+            </span>
+          )}
+          <StatusBadge value={olt.status} />
+        </div>
       </div>
       <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
         <InfoTile label="Tipe Perangkat" value={displayDeviceType(olt)} tone={accent.tile} />
@@ -1193,7 +1264,7 @@ function OltListPanel({
   onTest,
   onTestWrite,
   onPollOnu,
-  pollingOltId,
+  activePollingIds,
   onRemove,
 }: {
   olts: Olt[]
@@ -1204,7 +1275,7 @@ function OltListPanel({
   onTest: (olt: Olt) => void
   onTestWrite: (olt: Olt) => void
   onPollOnu: (olt: Olt) => void
-  pollingOltId: string | null
+  activePollingIds: string[]
   onRemove: (olt: Olt) => void
 }) {
   return (
@@ -1225,6 +1296,7 @@ function OltListPanel({
           {olts.map((olt) => {
             const accent = oltAccent(olt)
             const selected = selectedOltId === olt.id
+            const isPolling = activePollingIds.includes(olt.id)
 
             return (
               <div
@@ -1236,6 +1308,12 @@ function OltListPanel({
                 <span className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${accent.strip}`} />
                 <OltHeaderInfo olt={olt} accent={accent} onSelect={() => onSelect(olt.id)} />
               <div className="flex items-center gap-2">
+                {isPolling && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 animate-pulse">
+                    <RefreshCcw className="h-3 w-3 animate-spin text-cyan-500" aria-hidden="true" />
+                    Polling SNMP...
+                  </span>
+                )}
                 <StatusBadge value={olt.status} />
                 <button
                   className={secondaryButtonClass}
@@ -1270,13 +1348,13 @@ function OltListPanel({
                   Test Write
                 </button>
                 <button
-                  className={`${cyanButtonClass} ${pollingOltId === olt.id ? "animate-pulse" : ""}`}
+                  className={`${cyanButtonClass} ${isPolling ? "animate-pulse" : ""}`}
                   type="button"
-                  disabled={pollingOltId === olt.id}
+                  disabled={isPolling}
                   onClick={() => onPollOnu(olt)}
                 >
-                  <RefreshCcw className={`h-3.5 w-3.5 ${pollingOltId === olt.id ? "animate-spin" : ""}`} aria-hidden="true" />
-                  {pollingOltId === olt.id ? "Polling..." : "Poll ONU"}
+                  <RefreshCcw className={`h-3.5 w-3.5 ${isPolling ? "animate-spin" : ""}`} aria-hidden="true" />
+                  {isPolling ? "Polling..." : "Poll ONU"}
                 </button>
                 <button
                   className="inline-flex h-9 items-center rounded-xl border border-red-200 bg-white px-2.5 text-red-700 shadow-sm transition hover:bg-red-50"
@@ -1315,7 +1393,7 @@ function OnuView(props: {
   onStartRename: (onu: Onu) => void
   onSaveRename: (onu: Onu) => void
   onPollOnu: (olt: Olt) => void
-  pollingOltId: string | null
+  activePollingIds: string[]
 }) {
   const renameEnabled =
     Boolean(props.selectedOlt?.writeCommunity?.trim()) && props.selectedOlt?.writeMode === "snmp" && supportsSnmpRename(props.selectedOlt)
@@ -1325,7 +1403,7 @@ function OnuView(props: {
       : props.selectedOlt?.oidProfile === "vsol-gpon"
         ? "VSOL dilewati"
       : "Rename nonaktif"
-  const polling = Boolean(props.selectedOlt && props.pollingOltId === props.selectedOlt.id)
+  const polling = Boolean(props.selectedOlt && props.activePollingIds.includes(props.selectedOlt.id))
 
   return (
     <section className={panelClass}>

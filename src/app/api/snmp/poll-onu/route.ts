@@ -307,3 +307,7 @@ export async function POST(request: Request) {
     activePolls.delete(lockKey)
   }
 }
+
+export async function GET() {
+  return NextResponse.json({ activePolls: Array.from(activePolls) })
+}

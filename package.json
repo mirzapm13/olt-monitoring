@@ -9,9 +9,11 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "lucide-react": "0.468.0",
     "net-snmp": "^3.26.3",
     "next": "^16.2.10",
+    "prisma": "^6.19.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
