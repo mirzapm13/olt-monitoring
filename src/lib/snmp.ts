@@ -588,11 +588,31 @@ async function pollVsolOnusFromOlt(snmp: typeof import("net-snmp"), session: Snm
 }
 
 async function pollVsolEponOnusFromOlt(snmp: typeof import("net-snmp"), session: SnmpSession, olt: Olt) {
-  const infoRows = await walk(snmp, session, vsolEponOids.onuInfoBase, 8000)
-  const hwRows = await walk(snmp, session, vsolEponOids.hardwareBase, 4000)
-  let opticalRows = await walk(snmp, session, vsolEponOids.opticalBase, 4000)
+  const infoColumns = [
+    vsolEponOids.status,
+    vsolEponOids.mac,
+    vsolEponOids.name,
+    vsolEponOids.distance,
+  ]
+
+  const infoRows: SnmpRow[] = []
+  for (const colOid of infoColumns) {
+    const rows = await walk(snmp, session, colOid, 2000)
+    infoRows.push(...rows)
+  }
+
+  const walkOpticalColumns = async (baseOid: string) => {
+    const rows: SnmpRow[] = []
+    for (const col of ["3", "6", "7"]) {
+      const colRows = await walk(snmp, session, `${baseOid}.${col}`, 2000)
+      rows.push(...colRows)
+    }
+    return rows
+  }
+
+  let opticalRows = await walkOpticalColumns(vsolEponOids.opticalBase)
   if (opticalRows.length === 0) {
-    opticalRows = await walk(snmp, session, vsolEponOids.opticalBaseAlt, 4000)
+    opticalRows = await walkOpticalColumns(vsolEponOids.opticalBaseAlt)
   }
 
   const onusByIndex = new Map<string, {
@@ -601,8 +621,6 @@ async function pollVsolEponOnusFromOlt(snmp: typeof import("net-snmp"), session:
     ontId: string
     status: Onu["status"]
     mac: string
-    vendorId: string
-    modelId: string
     name: string
     temperature: number | null
     distance: number
@@ -629,8 +647,6 @@ async function pollVsolEponOnusFromOlt(snmp: typeof import("net-snmp"), session:
         ontId,
         status: "offline",
         mac: "-",
-        vendorId: "",
-        modelId: "",
         name: "",
         temperature: null,
         distance: 0,
@@ -655,19 +671,6 @@ async function pollVsolEponOnusFromOlt(snmp: typeof import("net-snmp"), session:
       if (Number.isFinite(num)) {
         item.distance = num
       }
-    }
-  }
-
-  // Parse hwRows from 1.3.6.1.4.1.37950.1.1.5.12.2.1.2.1.<col>.<pon>.<onu>
-  for (const row of hwRows) {
-    if (row.oid.startsWith(`${vsolEponOids.vendorId}.`)) {
-      const indexKey = row.oid.slice(vsolEponOids.vendorId.length + 1)
-      const item = onusByIndex.get(indexKey)
-      if (item) item.vendorId = String(row.value || "").trim()
-    } else if (row.oid.startsWith(`${vsolEponOids.modelId}.`)) {
-      const indexKey = row.oid.slice(vsolEponOids.modelId.length + 1)
-      const item = onusByIndex.get(indexKey)
-      if (item) item.modelId = String(row.value || "").trim()
     }
   }
 
@@ -739,8 +742,18 @@ function formatHiosoMac(raw: string) {
 }
 
 async function pollHiosoEponOnusFromOlt(snmp: typeof import("net-snmp"), session: SnmpSession, olt: Olt) {
-  const infoRows = await walk(snmp, session, hiosoEponOids.onuInfoBase, 12000, 20)
-  const opticalRows = await walk(snmp, session, hiosoEponOids.opticalBase, 12000, 20)
+  const infoColumns = [
+    hiosoEponOids.mac,
+    hiosoEponOids.distance,
+    hiosoEponOids.name,
+    hiosoEponOids.status,
+  ]
+
+  const infoRows: SnmpRow[] = []
+  for (const colOid of infoColumns) {
+    const rows = await walk(snmp, session, colOid, 2000, 20)
+    infoRows.push(...rows)
+  }
 
   const onusByIndex = new Map<string, {
     ontIndex: string
@@ -799,6 +812,28 @@ async function pollHiosoEponOnusFromOlt(snmp: typeof import("net-snmp"), session
     } else if (col === "39") {
       item.status = String(row.value).trim() === "1" ? "online" : "offline"
     }
+  }
+
+  // Query optical diagnostics only for online ONUs, requesting txPower, temperature, and rxPower
+  // in the same SNMP GET batch per ONU so the HiOSO OLT queries each ONU's OAM transceiver only once
+  // and never stalls on offline ONUs.
+  const onlineItems = [...onusByIndex.values()].filter((item) => item.status === "online")
+  const opticalRows: SnmpRow[] = []
+  const onusPerBatch = 10
+
+  for (let i = 0; i < onlineItems.length; i += onusPerBatch) {
+    const batch = onlineItems.slice(i, i + onusPerBatch)
+    const oids: string[] = []
+    for (const item of batch) {
+      const suffix = `1.${item.ponPort}.${item.ontId}`
+      oids.push(
+        `${hiosoEponOids.txPower}.${suffix}`,
+        `${hiosoEponOids.temperature}.${suffix}`,
+        `${hiosoEponOids.rxPower}.${suffix}`
+      )
+    }
+    const rows = await getRowsWithFallback(snmp, session, oids)
+    opticalRows.push(...rows)
   }
 
   // Parse opticalRows from 1.3.6.1.4.1.25355.3.2.6.14.2.1.<col>.1.<pon>.<onu>

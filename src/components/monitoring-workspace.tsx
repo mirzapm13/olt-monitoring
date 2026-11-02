@@ -356,9 +356,15 @@ export function MonitoringWorkspace({ view }: { view: View }) {
   }
 
   const selectedOlt = olts.find((olt) => olt.id === selectedOltId) ?? olts[0]
-  const selectedOnus = onus.filter((onu) => onu.oltId === selectedOlt?.id)
+  const selectedOnus = onus
+    .filter((onu) => onu.oltId === selectedOlt?.id)
+    .sort((a, b) => {
+      const ponDiff = String(a.ponPort).localeCompare(String(b.ponPort), undefined, { numeric: true })
+      if (ponDiff !== 0) return ponDiff
+      return String(a.onuIndex).localeCompare(String(b.onuIndex), undefined, { numeric: true })
+    })
   const filteredOnus = selectedOnus.filter((onu) => {
-    const value = `${onu.name} ${onu.serialNumber} ${onu.ponPort}`.toLowerCase()
+    const value = `${onu.name} ${onu.serialNumber} ${onu.ponPort}:${onu.onuIndex} ${onu.ponPort}/${onu.onuIndex}`.toLowerCase()
     return value.includes(query.toLowerCase())
   })
 

@@ -18,10 +18,19 @@ export const emptyMonitoringState: MonitoringState = {
   },
 }
 
+export function compareOnuOrder(a: Onu, b: Onu): number {
+  if (a.oltId !== b.oltId) {
+    return a.oltId.localeCompare(b.oltId)
+  }
+  const ponDiff = String(a.ponPort).localeCompare(String(b.ponPort), undefined, { numeric: true })
+  if (ponDiff !== 0) return ponDiff
+  return String(a.onuIndex).localeCompare(String(b.onuIndex), undefined, { numeric: true })
+}
+
 export function normalizeMonitoringState(state: Partial<MonitoringState>): MonitoringState {
   return {
     olts: Array.isArray(state.olts) ? state.olts : [],
-    onus: Array.isArray(state.onus) ? state.onus : [],
+    onus: Array.isArray(state.onus) ? [...state.onus].sort(compareOnuOrder) : [],
     alerts: Array.isArray(state.alerts) ? state.alerts : [],
     settings: {
       telegram: {
@@ -65,22 +74,24 @@ export async function readMonitoringState(): Promise<MonitoringState> {
       systemInfo: row.systemInfo ? (row.systemInfo as Record<string, string>) : undefined,
     }))
 
-    const onus: Onu[] = dbOnus.map((row) => ({
-      id: row.id,
-      oltId: row.oltId,
-      name: row.name,
-      serialNumber: row.serialNumber,
-      ponPort: row.ponPort,
-      onuIndex: row.onuIndex,
-      status: row.status as Onu["status"],
-      rxPower: row.rxPower,
-      txPower: row.txPower,
-      temperatureC: row.temperatureC,
-      downReason: row.downReason,
-      distanceMeters: row.distanceMeters,
-      lastSeen: row.lastSeen,
-      syncStatus: row.syncStatus as Onu["syncStatus"],
-    }))
+    const onus: Onu[] = dbOnus
+      .map((row) => ({
+        id: row.id,
+        oltId: row.oltId,
+        name: row.name,
+        serialNumber: row.serialNumber,
+        ponPort: row.ponPort,
+        onuIndex: row.onuIndex,
+        status: row.status as Onu["status"],
+        rxPower: row.rxPower,
+        txPower: row.txPower,
+        temperatureC: row.temperatureC,
+        downReason: row.downReason,
+        distanceMeters: row.distanceMeters,
+        lastSeen: row.lastSeen,
+        syncStatus: row.syncStatus as Onu["syncStatus"],
+      }))
+      .sort(compareOnuOrder)
 
     const alerts: Alert[] = dbAlerts.map((row) => ({
       id: row.id,
@@ -181,41 +192,47 @@ export async function writeMonitoringState(state: MonitoringState) {
       where: { id: { notIn: onuIdsInState } },
     })
 
-    for (const onu of norm.onus) {
-      await db.onu.upsert({
-        where: { id: onu.id },
-        update: {
-          oltId: onu.oltId,
-          name: onu.name,
-          serialNumber: onu.serialNumber,
-          ponPort: onu.ponPort,
-          onuIndex: onu.onuIndex,
-          status: onu.status,
-          rxPower: onu.rxPower,
-          txPower: onu.txPower,
-          temperatureC: onu.temperatureC ?? null,
-          downReason: onu.downReason ?? null,
-          distanceMeters: onu.distanceMeters || 0,
-          lastSeen: onu.lastSeen || "Baru saja",
-          syncStatus: onu.syncStatus || "synced",
-        },
-        create: {
-          id: onu.id,
-          oltId: onu.oltId,
-          name: onu.name,
-          serialNumber: onu.serialNumber,
-          ponPort: onu.ponPort,
-          onuIndex: onu.onuIndex,
-          status: onu.status,
-          rxPower: onu.rxPower,
-          txPower: onu.txPower,
-          temperatureC: onu.temperatureC ?? null,
-          downReason: onu.downReason ?? null,
-          distanceMeters: onu.distanceMeters || 0,
-          lastSeen: onu.lastSeen || "Baru saja",
-          syncStatus: onu.syncStatus || "synced",
-        },
-      })
+    const onuBatchSize = 200
+    for (let i = 0; i < norm.onus.length; i += onuBatchSize) {
+      const batch = norm.onus.slice(i, i + onuBatchSize)
+      await db.$transaction(
+        batch.map((onu) =>
+          db.onu.upsert({
+            where: { id: onu.id },
+            update: {
+              oltId: onu.oltId,
+              name: onu.name,
+              serialNumber: onu.serialNumber,
+              ponPort: onu.ponPort,
+              onuIndex: onu.onuIndex,
+              status: onu.status,
+              rxPower: onu.rxPower,
+              txPower: onu.txPower,
+              temperatureC: onu.temperatureC ?? null,
+              downReason: onu.downReason ?? null,
+              distanceMeters: onu.distanceMeters || 0,
+              lastSeen: onu.lastSeen || "Baru saja",
+              syncStatus: onu.syncStatus || "synced",
+            },
+            create: {
+              id: onu.id,
+              oltId: onu.oltId,
+              name: onu.name,
+              serialNumber: onu.serialNumber,
+              ponPort: onu.ponPort,
+              onuIndex: onu.onuIndex,
+              status: onu.status,
+              rxPower: onu.rxPower,
+              txPower: onu.txPower,
+              temperatureC: onu.temperatureC ?? null,
+              downReason: onu.downReason ?? null,
+              distanceMeters: onu.distanceMeters || 0,
+              lastSeen: onu.lastSeen || "Baru saja",
+              syncStatus: onu.syncStatus || "synced",
+            },
+          })
+        )
+      )
     }
 
     // 3. Sync Alerts
@@ -224,27 +241,31 @@ export async function writeMonitoringState(state: MonitoringState) {
       where: { id: { notIn: alertIdsInState } },
     })
 
-    for (const alert of norm.alerts) {
-      await db.alert.upsert({
-        where: { id: alert.id },
-        update: {
-          oltId: alert.oltId,
-          title: alert.title,
-          detail: alert.detail,
-          severity: alert.severity,
-          acknowledged: alert.acknowledged,
-          createdAt: alert.createdAt,
-        },
-        create: {
-          id: alert.id,
-          oltId: alert.oltId,
-          title: alert.title,
-          detail: alert.detail,
-          severity: alert.severity,
-          acknowledged: alert.acknowledged,
-          createdAt: alert.createdAt,
-        },
-      })
+    if (norm.alerts.length > 0) {
+      await db.$transaction(
+        norm.alerts.map((alert) =>
+          db.alert.upsert({
+            where: { id: alert.id },
+            update: {
+              oltId: alert.oltId,
+              title: alert.title,
+              detail: alert.detail,
+              severity: alert.severity,
+              acknowledged: alert.acknowledged,
+              createdAt: alert.createdAt,
+            },
+            create: {
+              id: alert.id,
+              oltId: alert.oltId,
+              title: alert.title,
+              detail: alert.detail,
+              severity: alert.severity,
+              acknowledged: alert.acknowledged,
+              createdAt: alert.createdAt,
+            },
+          })
+        )
+      )
     }
 
     // 4. Sync Telegram Settings

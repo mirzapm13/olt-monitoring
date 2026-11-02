@@ -21,6 +21,55 @@
   ],
   "auditLogs": [
     {
+      "id": "audit-1793593759445-f5ea05cc-3c5c-4b46-879b-94fa76e9baee",
+      "actor": "superadmin",
+      "action": "login_success",
+      "detail": "Login berhasil.",
+      "createdAt": "2/11/2026, 11.29.19"
+    },
+    {
+      "id": "audit-1793544633562-922028c9-2c56-4aa7-9d18-2f0d5b3b313a",
+      "actor": "superadmin",
+      "action": "login_success",
+      "detail": "Login berhasil.",
+      "createdAt": "1/11/2026, 21.50.33"
+    },
+    {
+      "id": "audit-1793260593143-1d74986a-e698-41e8-86f4-107cb5ab38ac",
+      "actor": "superadmin",
+      "action": "login_success",
+      "detail": "Login berhasil.",
+      "createdAt": "29/10/2026, 14.56.33"
+    },
+    {
+      "id": "audit-1793260584702-b5d8ae2c-5f4b-4694-a932-5705d866fafe",
+      "actor": "admin",
+      "action": "login_failed",
+      "detail": "Percobaan login gagal.",
+      "createdAt": "29/10/2026, 14.56.24"
+    },
+    {
+      "id": "audit-1792395013748-4314eea5-4aa9-410f-b537-0c22588f9793",
+      "actor": "superadmin",
+      "action": "login_success",
+      "detail": "Login berhasil.",
+      "createdAt": "19/10/2026, 14.30.13"
+    },
+    {
+      "id": "audit-1791561101192-e36db6bb-5e9e-484f-a9b7-00b97f1ecb1b",
+      "actor": "superadmin",
+      "action": "login_success",
+      "detail": "Login berhasil.",
+      "createdAt": "9/10/2026, 22.51.41"
+    },
+    {
+      "id": "audit-1791561094760-fd3ee087-58e5-46ce-bdca-0ae800346459",
+      "actor": "superadmin",
+      "action": "login_failed",
+      "detail": "Percobaan login gagal.",
+      "createdAt": "9/10/2026, 22.51.34"
+    },
+    {
       "id": "audit-1791178181155-640ce69b-27da-4bae-ae4c-4f7c87569f63",
       "actor": "superadmin",
       "action": "login_success",
