@@ -45,7 +45,10 @@ export async function readMonitoringState(): Promise<MonitoringState> {
   try {
     const [dbOlts, dbOnus, dbAlerts, telegramRow] = await Promise.all([
       db.olt.findMany({ orderBy: { id: "asc" } }),
-      db.onu.findMany({ orderBy: [{ oltId: "asc" }, { ponPort: "asc" }, { onuIndex: "asc" }] }),
+      db.onu.findMany({
+        include: { customerLink: true },
+        orderBy: [{ oltId: "asc" }, { ponPort: "asc" }, { onuIndex: "asc" }],
+      }),
       db.alert.findMany({ orderBy: { storedAt: "desc" } }),
       db.telegramSetting.findUnique({ where: { id: 1 } }),
     ])
@@ -90,6 +93,25 @@ export async function readMonitoringState(): Promise<MonitoringState> {
         distanceMeters: row.distanceMeters,
         lastSeen: row.lastSeen,
         syncStatus: row.syncStatus as Onu["syncStatus"],
+        customerLink: row.customerLink
+          ? {
+              idPelanggan: row.customerLink.idPelanggan,
+              namaPelanggan: row.customerLink.namaPelanggan,
+              alamat: row.customerLink.alamat,
+              tlp: row.customerLink.tlp,
+              namaLangganan: row.customerLink.namaLangganan,
+              statusLangganan: row.customerLink.statusLangganan,
+              ipSecret: row.customerLink.ipSecret,
+              routerName: row.customerLink.routerName,
+              pppoeMac: row.customerLink.pppoeMac,
+              onuMac: row.customerLink.onuMac,
+              macSource: row.customerLink.macSource,
+              macOffset: row.customerLink.macOffset,
+              lastLoggedOut: row.customerLink.lastLoggedOut,
+              pppoeAddress: row.customerLink.pppoeAddress,
+              syncedAt: row.customerLink.syncedAt.toISOString(),
+            }
+          : null,
       }))
       .sort(compareOnuOrder)
 

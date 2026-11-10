@@ -356,6 +356,41 @@ export function MonitoringWorkspace({ view }: { view: View }) {
   }
 
   const selectedOlt = olts.find((olt) => olt.id === selectedOltId) ?? olts[0]
+  const [syncingCustomers, setSyncingCustomers] = useState(false)
+
+  async function syncCustomersAndMikrotik() {
+    if (syncingCustomers) return
+    setSyncingCustomers(true)
+    setNotice("Menghubungkan ke 4 Router Mikrotik, isp_ops_db, dan olt_db...")
+    showToast("Sync Mikrotik & Customer sedang berjalan...", "info")
+
+    try {
+      const response = await fetch("/api/customer-sync", {
+        method: "POST",
+      })
+      const result = (await response.json()) as {
+        ok?: boolean
+        message?: string
+        state?: MonitoringState
+      }
+
+      if (result.state) {
+        stateRef.current = result.state
+        setStoredState(result.state)
+      }
+
+      const msg = result.message || (result.ok ? "Sync Mikrotik & Customer selesai." : "Sync gagal.")
+      setNotice(msg)
+      showToast(msg, result.ok ? "success" : "error")
+    } catch (error) {
+      const msg = error instanceof Error ? `Sync gagal: ${error.message}` : "Sync Mikrotik & Customer gagal."
+      setNotice(msg)
+      showToast(msg, "error")
+    } finally {
+      setSyncingCustomers(false)
+    }
+  }
+
   const selectedOnus = onus
     .filter((onu) => onu.oltId === selectedOlt?.id)
     .sort((a, b) => {
@@ -364,7 +399,11 @@ export function MonitoringWorkspace({ view }: { view: View }) {
       return String(a.onuIndex).localeCompare(String(b.onuIndex), undefined, { numeric: true })
     })
   const filteredOnus = selectedOnus.filter((onu) => {
-    const value = `${onu.name} ${onu.serialNumber} ${onu.ponPort}:${onu.onuIndex} ${onu.ponPort}/${onu.onuIndex}`.toLowerCase()
+    const link = onu.customerLink
+    const linkText = link
+      ? `${link.namaPelanggan ?? ""} ${link.idPelanggan ?? ""} ${link.ipSecret} ${link.routerName} ${link.pppoeMac} ${link.alamat ?? ""}`
+      : ""
+    const value = `${onu.name} ${onu.serialNumber} ${onu.ponPort}:${onu.onuIndex} ${onu.ponPort}/${onu.onuIndex} ${linkText}`.toLowerCase()
     return value.includes(query.toLowerCase())
   })
 
@@ -819,6 +858,8 @@ export function MonitoringWorkspace({ view }: { view: View }) {
           onSaveRename={saveRename}
           onPollOnu={pollOnu}
           activePollingIds={activePollingIds}
+          onSyncCustomers={syncCustomersAndMikrotik}
+          syncingCustomers={syncingCustomers}
         />
       )}
 
@@ -1400,6 +1441,8 @@ function OnuView(props: {
   onSaveRename: (onu: Onu) => void
   onPollOnu: (olt: Olt) => void
   activePollingIds: string[]
+  onSyncCustomers: () => void
+  syncingCustomers: boolean
 }) {
   const renameEnabled =
     Boolean(props.selectedOlt?.writeCommunity?.trim()) && props.selectedOlt?.writeMode === "snmp" && supportsSnmpRename(props.selectedOlt)
@@ -1410,15 +1453,24 @@ function OnuView(props: {
         ? "VSOL dilewati"
       : "Rename nonaktif"
   const polling = Boolean(props.selectedOlt && props.activePollingIds.includes(props.selectedOlt.id))
+  const linkedCount = props.onus.filter((o) => Boolean(o.customerLink)).length
+  const billingLinkedCount = props.onus.filter((o) => Boolean(o.customerLink?.idPelanggan)).length
 
   return (
     <section className={panelClass}>
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-sm font-semibold text-slate-950">ONU/ONT</h1>
-          <p className="text-sm text-slate-500">Data RX, suhu, dan kasus down dibaca dari OID OLT.</p>
+          <p className="text-sm text-slate-500">
+            Data RX, suhu, dan kasus down dibaca dari OID OLT.{" "}
+            {props.onus.length > 0 && (
+              <span className="font-medium text-cyan-800">
+                ({linkedCount}/{props.onus.length} terhubung PPPoE • {billingLinkedCount} pelanggan billing)
+              </span>
+            )}
+          </p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <select
             className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
             value={props.selectedOlt?.id ?? ""}
@@ -1440,11 +1492,20 @@ function OnuView(props: {
             <RefreshCcw className={`h-4 w-4 ${polling ? "animate-spin" : ""}`} aria-hidden="true" />
             {polling ? "Polling..." : "Poll ONU"}
           </button>
+          <button
+            className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 ${props.syncingCustomers ? "animate-pulse" : ""}`}
+            type="button"
+            disabled={props.syncingCustomers}
+            onClick={props.onSyncCustomers}
+          >
+            <Router className={`h-4 w-4 ${props.syncingCustomers ? "animate-spin" : ""}`} aria-hidden="true" />
+            {props.syncingCustomers ? "Syncing Mikrotik..." : "Sync Mikrotik & Customer"}
+          </button>
           <label className="relative block sm:w-72">
             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" aria-hidden="true" />
             <input
               className="h-10 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
-              placeholder="Cari nama, serial, atau PON"
+              placeholder="Cari nama, pelanggan, PPPoE, serial, PON"
               value={props.query}
               onChange={(event) => props.onQuery(event.target.value)}
             />
@@ -1456,10 +1517,12 @@ function OnuView(props: {
         <EmptyState title="Belum ada data ONU/ONT" text="Setelah polling SNMP dibuat, daftar ONU dari OLT akan muncul di sini." />
       ) : (
         <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white/60">
-          <table className="w-full min-w-[900px] text-left text-sm">
+          <table className="w-full min-w-[1150px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
-                <th className="px-4 py-3 font-semibold">Nama</th>
+                <th className="px-4 py-3 font-semibold">Nama (SNMP)</th>
+                <th className="px-4 py-3 font-semibold">Pelanggan (ISP)</th>
+                <th className="px-4 py-3 font-semibold">PPPoE / Router</th>
                 <th className="px-4 py-3 font-semibold">Serial</th>
                 <th className="px-4 py-3 font-semibold">PON</th>
                 <th className="px-4 py-3 font-semibold">RX</th>
@@ -1471,63 +1534,137 @@ function OnuView(props: {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {props.onus.map((onu) => (
-                <tr key={onu.id} className="bg-white/70 transition hover:bg-cyan-50/50">
-                  <td className="px-4 py-3">
-                    {props.editingOnuId === onu.id ? (
-                      <input
-                        className="h-9 w-full rounded-xl border border-slate-300 px-2 text-sm outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
-                        value={props.draftName}
-                        onChange={(event) => props.onDraftName(event.target.value)}
-                      />
-                    ) : (
-                      <span className="font-medium text-slate-950">{onu.name}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{onu.serialNumber}</td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {onu.ponPort}:{onu.onuIndex}
-                  </td>
-                  <td className="px-4 py-3">
-                    <SignalBadge value={formatRxPower(onu.rxPower)} tone={rxTone(onu.rxPower)} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <SignalBadge value={formatTemperature(onu.temperatureC)} tone={temperatureTone(onu.temperatureC)} />
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{onu.status === "online" ? "-" : onu.downReason || "Down"}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge value={onu.status} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge value={onu.syncStatus} />
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {props.editingOnuId === onu.id ? (
-                      <button
-                        className="inline-flex h-9 items-center gap-2 rounded-xl bg-cyan-700 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-cyan-800"
-                        type="button"
-                        onClick={() => props.onSaveRename(onu)}
-                      >
-                        <Save className="h-3.5 w-3.5" aria-hidden="true" />
-                        Simpan
-                      </button>
-                    ) : renameEnabled ? (
-                      <button
-                        className={secondaryButtonClass}
-                        type="button"
-                        onClick={() => props.onStartRename(onu)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                        Rename
-                      </button>
-                    ) : (
-                      <span className="inline-flex h-8 items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs font-semibold text-slate-500">
-                        {renameDisabledText}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {props.onus.map((onu) => {
+                const link = onu.customerLink
+                const offsetLabel =
+                  link?.macOffset === 0
+                    ? "Exact"
+                    : link && link.macOffset > 0
+                      ? `+${link.macOffset}`
+                      : link
+                        ? String(link.macOffset)
+                        : ""
+
+                return (
+                  <tr key={onu.id} className="bg-white/70 transition hover:bg-cyan-50/50">
+                    <td className="px-4 py-3">
+                      {props.editingOnuId === onu.id ? (
+                        <input
+                          className="h-9 w-full rounded-xl border border-slate-300 px-2 text-sm outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
+                          value={props.draftName}
+                          onChange={(event) => props.onDraftName(event.target.value)}
+                        />
+                      ) : (
+                        <span className="font-medium text-slate-950">{onu.name}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {link?.namaPelanggan ? (
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-slate-900">{link.namaPelanggan}</span>
+                            {link.statusLangganan && (
+                              <span
+                                className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                                  link.statusLangganan.toLowerCase() === "on"
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : "bg-amber-100 text-amber-800"
+                                }`}
+                              >
+                                {link.statusLangganan}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            ID: {link.idPelanggan || "-"}
+                            {link.namaLangganan ? ` • ${link.namaLangganan}` : ""}
+                          </p>
+                          {link.alamat && (
+                            <p className="max-w-[240px] truncate text-[11px] text-slate-400" title={link.alamat}>
+                              {link.alamat}
+                            </p>
+                          )}
+                        </div>
+                      ) : link ? (
+                        <span className="text-xs italic text-slate-400">PPPoE tanpa data billing</span>
+                      ) : (
+                        <span className="text-xs text-slate-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {link ? (
+                        <div className="space-y-0.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-mono text-xs font-semibold text-cyan-900">{link.ipSecret}</span>
+                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
+                              {link.routerName}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                            <span className="font-mono">{link.pppoeMac}</span>
+                            <span
+                              className={`inline-flex items-center rounded px-1 py-0.2 text-[10px] font-medium ${
+                                link.macSource === "active"
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {link.macSource === "active" ? "active" : "last-caller"}
+                            </span>
+                            <span className="inline-flex items-center rounded bg-cyan-50 px-1 py-0.2 font-mono text-[10px] font-semibold text-cyan-800">
+                              MAC {offsetLabel}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-600">{onu.serialNumber}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {onu.ponPort}:{onu.onuIndex}
+                    </td>
+                    <td className="px-4 py-3">
+                      <SignalBadge value={formatRxPower(onu.rxPower)} tone={rxTone(onu.rxPower)} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <SignalBadge value={formatTemperature(onu.temperatureC)} tone={temperatureTone(onu.temperatureC)} />
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{onu.status === "online" ? "-" : onu.downReason || "Down"}</td>
+                    <td className="px-4 py-3">
+                      <StatusBadge value={onu.status} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge value={onu.syncStatus} />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {props.editingOnuId === onu.id ? (
+                        <button
+                          className="inline-flex h-9 items-center gap-2 rounded-xl bg-cyan-700 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-cyan-800"
+                          type="button"
+                          onClick={() => props.onSaveRename(onu)}
+                        >
+                          <Save className="h-3.5 w-3.5" aria-hidden="true" />
+                          Simpan
+                        </button>
+                      ) : renameEnabled ? (
+                        <button
+                          className={secondaryButtonClass}
+                          type="button"
+                          onClick={() => props.onStartRename(onu)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                          Rename
+                        </button>
+                      ) : (
+                        <span className="inline-flex h-8 items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs font-semibold text-slate-500">
+                          {renameDisabledText}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

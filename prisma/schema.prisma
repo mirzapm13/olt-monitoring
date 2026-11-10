@@ -56,11 +56,39 @@ model Onu {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  olt Olt @relation(fields: [oltId], references: [id], onDelete: Cascade)
+  olt          Olt              @relation(fields: [oltId], references: [id], onDelete: Cascade)
+  customerLink OnuCustomerLink?
 
   @@index([oltId])
   @@index([serialNumber])
   @@map("onus")
+}
+
+model OnuCustomerLink {
+  onuId           String   @id
+  oltId           String
+  idPelanggan     String?
+  namaPelanggan   String?
+  alamat          String?
+  tlp             String?
+  namaLangganan   String?
+  statusLangganan String?
+  ipSecret        String
+  routerName      String
+  pppoeMac        String
+  onuMac          String
+  macSource       String   @default("active")
+  macOffset       Int      @default(0)
+  lastLoggedOut   String?
+  pppoeAddress    String?
+  syncedAt        DateTime @default(now()) @updatedAt
+
+  onu Onu @relation(fields: [onuId], references: [id], onDelete: Cascade)
+
+  @@index([idPelanggan])
+  @@index([ipSecret])
+  @@index([routerName])
+  @@map("onu_customer_links")
 }
 
 model Alert {

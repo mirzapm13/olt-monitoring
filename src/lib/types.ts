@@ -38,6 +38,24 @@ export type Olt = {
   systemInfo?: Record<string, string>
 }
 
+export type OnuCustomerLinkInfo = {
+  idPelanggan?: string | null
+  namaPelanggan?: string | null
+  alamat?: string | null
+  tlp?: string | null
+  namaLangganan?: string | null
+  statusLangganan?: string | null
+  ipSecret: string
+  routerName: string
+  pppoeMac: string
+  onuMac: string
+  macSource: "active" | "last-caller" | "none" | string
+  macOffset: number
+  lastLoggedOut?: string | null
+  pppoeAddress?: string | null
+  syncedAt?: string
+}
+
 export type Onu = {
   id: string
   oltId: string
@@ -53,6 +71,7 @@ export type Onu = {
   distanceMeters: number
   lastSeen: string
   syncStatus: "synced" | "pending" | "failed" | "local-only"
+  customerLink?: OnuCustomerLinkInfo | null
 }
 
 export type Alert = {

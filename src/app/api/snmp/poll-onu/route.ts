@@ -20,8 +20,16 @@ function formatTemperature(value: number | null | undefined) {
 }
 
 function buildOnuAlertDetail(onu: Onu, olt: Olt, eventTime: string, eventLabel: string) {
+  const link = onu.customerLink
+  const customerPart = link?.namaPelanggan
+    ? `Pelanggan Billing: ${link.namaPelanggan}${link.idPelanggan ? ` (${link.idPelanggan})` : ""}`
+    : null
+  const pppoePart = link?.ipSecret ? `PPPoE: ${link.ipSecret} @ ${link.routerName}` : null
+
   return [
-    `Nama pelanggan: ${onu.name}`,
+    `Nama ONU: ${onu.name}`,
+    customerPart,
+    pppoePart,
     `OLT: ${olt.name}`,
     `PON: ${onu.ponPort}:${onu.onuIndex}`,
     `Serial: ${onu.serialNumber || "-"}`,
@@ -32,7 +40,9 @@ function buildOnuAlertDetail(onu: Onu, olt: Olt, eventTime: string, eventLabel: 
     `Last Seen: ${onu.lastSeen}`,
     `Event: ${eventLabel}`,
     `Waktu Event: ${eventTime}`,
-  ].join(" | ")
+  ]
+    .filter(Boolean)
+    .join(" | ")
 }
 
 function latestSavedOnuEvent(state: MonitoringState, onuId: string) {
@@ -130,24 +140,22 @@ function buildTransitionAlerts(state: MonitoringState, olt: Olt, nextOnus: Onu[]
 }
 
 function keepLocalVsolNames(state: MonitoringState, olt: Olt, nextOnus: Onu[]) {
-  if (olt.oidProfile !== "vsol-gpon") return nextOnus
-
   const previousById = new Map(state.onus.filter((onu) => onu.oltId === olt.id).map((onu) => [onu.id, onu]))
 
   return nextOnus.map((onu) => {
     const previous = previousById.get(onu.id)
     const shouldKeepLocalName =
+      olt.oidProfile === "vsol-gpon" &&
       previous &&
       previous.name &&
       previous.name !== onu.name &&
       (previous.syncStatus === "pending" || previous.syncStatus === "local-only")
 
-    if (!shouldKeepLocalName) return onu
-
     return {
       ...onu,
-      name: previous.name,
-      syncStatus: previous.syncStatus,
+      name: shouldKeepLocalName && previous ? previous.name : onu.name,
+      syncStatus: shouldKeepLocalName && previous ? previous.syncStatus : onu.syncStatus,
+      customerLink: previous?.customerLink ?? onu.customerLink ?? null,
     }
   })
 }
