@@ -8,6 +8,10 @@ import type { Alert, MonitoringState, Olt, Onu } from "@/lib/types"
 export const runtime = "nodejs"
 
 const activePolls = new Set<string>()
+const failedPolls = new Map<
+  string,
+  { oltId: string; oltName: string; message: string; failedAt: string }
+>()
 
 function formatRxPower(value: number) {
   if (!Number.isFinite(value) || value === 0) return "-"
@@ -273,9 +277,18 @@ export async function POST(request: Request) {
         ),
       }
       const savedState = await writeMonitoringState(nextState)
+      failedPolls.delete(olt.id)
 
       return NextResponse.json({ ...result, onus: polledOnus, state: savedState, notification })
     }
+
+    const failedAt = new Date().toLocaleString("id-ID")
+    failedPolls.set(olt.id, {
+      oltId: olt.id,
+      oltName: olt.name,
+      message: result.message || "Polling SNMP ke OLT gagal.",
+      failedAt,
+    })
 
     const oltDownAlert = buildOltTransitionAlert(state, olt, "down", result.message)
     let notification = {
@@ -303,7 +316,7 @@ export async function POST(request: Request) {
           ? {
               ...item,
               status: "offline" as const,
-              lastSeen: `Gagal: ${new Date().toLocaleString("id-ID")}`,
+              lastSeen: `Gagal: ${failedAt}`,
             }
           : item,
       ),
@@ -317,5 +330,8 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  return NextResponse.json({ activePolls: Array.from(activePolls) })
+  return NextResponse.json({
+    activePolls: Array.from(activePolls),
+    failedPolls: Array.from(failedPolls.values()),
+  })
 }

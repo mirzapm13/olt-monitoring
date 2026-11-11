@@ -21,6 +21,20 @@
   ],
   "auditLogs": [
     {
+      "id": "audit-1794391942740-8a959754-0db2-4a55-90b7-0cfeb08707dc",
+      "actor": "Superadmin",
+      "action": "login_success",
+      "detail": "Login berhasil.",
+      "createdAt": "11/11/2026, 17.12.22"
+    },
+    {
+      "id": "audit-1794391931384-49176c92-6b0b-4f95-8879-dbd74758ef14",
+      "actor": "superadmin",
+      "action": "login_failed",
+      "detail": "Percobaan login gagal.",
+      "createdAt": "11/11/2026, 17.12.11"
+    },
+    {
       "id": "audit-1794310533207-ec52599e-87d8-4ae4-b56b-7cdb2b73f3c6",
       "actor": "superadmin",
       "action": "login_success",

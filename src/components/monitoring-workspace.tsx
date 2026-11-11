@@ -69,6 +69,12 @@ type PollOnuNotification = {
   skipped: boolean;
   message: string;
 };
+type FailedPollInfo = {
+  oltId: string;
+  oltName: string;
+  message: string;
+  failedAt: string;
+};
 type StartupStatus = {
   enabled: boolean;
   path?: string;
@@ -233,6 +239,10 @@ export function MonitoringWorkspace({ view }: { view: View }) {
   const [selectedOltId, setSelectedOltId] = useState("");
   const [editingOltId, setEditingOltId] = useState<string | null>(null);
   const [activePollingIds, setActivePollingIds] = useState<string[]>([]);
+  const [failedPolls, setFailedPolls] = useState<
+    Record<string, FailedPollInfo>
+  >({});
+  const [dismissedFailedIds, setDismissedFailedIds] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [editingOnuId, setEditingOnuId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
@@ -305,13 +315,25 @@ export function MonitoringWorkspace({ view }: { view: View }) {
     try {
       const res = await fetch("/api/snmp/poll-onu");
       if (!res.ok) return;
-      const data = (await res.json()) as { activePolls?: string[] };
+      const data = (await res.json()) as {
+        activePolls?: string[];
+        failedPolls?: FailedPollInfo[];
+      };
       if (Array.isArray(data.activePolls)) {
         setActivePollingIds((current) => {
           const isSame =
             current.length === data.activePolls!.length &&
             current.every((id) => data.activePolls!.includes(id));
           return isSame ? current : data.activePolls!;
+        });
+      }
+      if (Array.isArray(data.failedPolls)) {
+        setFailedPolls((prev) => {
+          const next = { ...prev };
+          for (const item of data.failedPolls!) {
+            next[item.oltId] = item;
+          }
+          return next;
         });
       }
     } catch {
@@ -331,7 +353,19 @@ export function MonitoringWorkspace({ view }: { view: View }) {
       try {
         const res = await fetch("/api/snmp/poll-onu");
         if (!res.ok) return;
-        const data = (await res.json()) as { activePolls?: string[] };
+        const data = (await res.json()) as {
+          activePolls?: string[];
+          failedPolls?: FailedPollInfo[];
+        };
+        if (Array.isArray(data.failedPolls)) {
+          setFailedPolls((prev) => {
+            const next = { ...prev };
+            for (const item of data.failedPolls!) {
+              next[item.oltId] = item;
+            }
+            return next;
+          });
+        }
         if (Array.isArray(data.activePolls)) {
           if (data.activePolls.length === 0) {
             const stateRes = await fetch("/api/monitoring/state");
@@ -490,6 +524,23 @@ export function MonitoringWorkspace({ view }: { view: View }) {
   const activelyPollingOltNames = olts
     .filter((olt) => activePollingIds.includes(olt.id))
     .map((olt) => olt.name);
+
+  const effectiveFailedPolls: Record<string, FailedPollInfo> = {};
+  for (const olt of olts) {
+    if (failedPolls[olt.id]) {
+      effectiveFailedPolls[olt.id] = failedPolls[olt.id];
+    } else if (olt.lastSeen?.startsWith("Gagal:")) {
+      effectiveFailedPolls[olt.id] = {
+        oltId: olt.id,
+        oltName: olt.name,
+        message: "Gagal menghubungi OLT saat polling SNMP terakhir.",
+        failedAt: olt.lastSeen.replace(/^Gagal:\s*/, ""),
+      };
+    }
+  }
+  const visibleFailedPolls = Object.values(effectiveFailedPolls).filter(
+    (item) => !dismissedFailedIds.includes(item.oltId),
+  );
 
   function updateForm<K extends keyof OltForm>(key: K, value: OltForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -820,6 +871,15 @@ export function MonitoringWorkspace({ view }: { view: View }) {
       };
 
       if (!result.ok) {
+        const failedInfo: FailedPollInfo = {
+          oltId: olt.id,
+          oltName: olt.name,
+          message: result.message || "Polling SNMP ke OLT gagal.",
+          failedAt: new Date().toLocaleString("id-ID"),
+        };
+        setFailedPolls((prev) => ({ ...prev, [olt.id]: failedInfo }));
+        setDismissedFailedIds((prev) => prev.filter((id) => id !== olt.id));
+
         if (result.state) {
           stateRef.current = result.state;
           setStoredState(result.state);
@@ -833,10 +893,23 @@ export function MonitoringWorkspace({ view }: { view: View }) {
             result.notification.message,
             (result.notification.failed ?? 0) > 0 ? "error" : "success",
           );
+        } else if (!silent) {
+          showToast(
+            `Polling ${olt.name} gagal: ${failedInfo.message}`,
+            "error",
+          );
         }
         if (!silent) setNotice(result.message);
         return;
       }
+
+      setFailedPolls((prev) => {
+        if (!prev[olt.id]) return prev;
+        const next = { ...prev };
+        delete next[olt.id];
+        return next;
+      });
+      setDismissedFailedIds((prev) => prev.filter((id) => id !== olt.id));
 
       const currentState = stateRef.current;
       const nextOnus = [
@@ -884,10 +957,22 @@ export function MonitoringWorkspace({ view }: { view: View }) {
         );
       }
     } catch (error) {
-      if (!silent)
-        setNotice(
-          error instanceof Error ? error.message : "Polling ONU gagal.",
-        );
+      const errorMsg =
+        error instanceof Error ? error.message : "Polling ONU gagal.";
+      setFailedPolls((prev) => ({
+        ...prev,
+        [olt.id]: {
+          oltId: olt.id,
+          oltName: olt.name,
+          message: errorMsg,
+          failedAt: new Date().toLocaleString("id-ID"),
+        },
+      }));
+      setDismissedFailedIds((prev) => prev.filter((id) => id !== olt.id));
+      if (!silent) {
+        setNotice(errorMsg);
+        showToast(`Polling ${olt.name} gagal: ${errorMsg}`, "error");
+      }
     } finally {
       pollingLocksRef.current.delete(olt.id);
       setActivePollingIds((prev) => prev.filter((id) => id !== olt.id));
@@ -959,6 +1044,65 @@ export function MonitoringWorkspace({ view }: { view: View }) {
         </div>
       )}
 
+      {visibleFailedPolls.length > 0 && (
+        <div className="mb-4 rounded-2xl border border-red-300 bg-red-50/95 px-4 py-3 text-sm text-red-900 shadow-sm dark:border-red-800 dark:bg-red-950/60 dark:text-red-100">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-2.5">
+              <CircleAlert
+                className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400"
+                aria-hidden="true"
+              />
+              <div>
+                <p className="font-semibold">
+                  Polling OLT gagal ({visibleFailedPolls.length} perangkat):{" "}
+                  <span>
+                    {visibleFailedPolls.map((item) => item.oltName).join(", ")}
+                  </span>
+                </p>
+                <ul className="mt-1 space-y-0.5 text-xs text-red-800 dark:text-red-200">
+                  {visibleFailedPolls.map((item) => (
+                    <li key={item.oltId}>
+                      <strong>{item.oltName}</strong>: {item.message}{" "}
+                      <span className="opacity-75">({item.failedAt})</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              <button
+                className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-red-300 bg-white px-2.5 text-xs font-semibold text-red-800 shadow-sm transition hover:bg-red-100 dark:border-red-700 dark:bg-red-900/60 dark:text-red-100"
+                type="button"
+                onClick={() => {
+                  for (const item of visibleFailedPolls) {
+                    const targetOlt = olts.find((o) => o.id === item.oltId);
+                    if (targetOlt) void pollOnu(targetOlt);
+                  }
+                }}
+              >
+                <RefreshCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                Poll Ulang
+              </button>
+              <button
+                className="grid h-8 w-8 place-items-center rounded-xl border border-red-200 bg-white/70 text-red-700 transition hover:bg-white dark:border-red-800 dark:bg-red-900/40 dark:text-red-200"
+                type="button"
+                onClick={() =>
+                  setDismissedFailedIds((prev) => [
+                    ...new Set([
+                      ...prev,
+                      ...visibleFailedPolls.map((item) => item.oltId),
+                    ]),
+                  ])
+                }
+                aria-label="Tutup indikator gagal polling"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {(view === "dashboard" || view === "olts") && (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
@@ -994,6 +1138,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
           alerts={operationalAlerts}
           notice={notice}
           activePollingIds={activePollingIds}
+          failedPolls={effectiveFailedPolls}
         />
       )}
 
@@ -1017,6 +1162,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
             onTestWrite={testWriteCommunity}
             onPollOnu={pollOnu}
             activePollingIds={activePollingIds}
+            failedPolls={effectiveFailedPolls}
             onRemove={setDeleteCandidate}
           />
         </section>
@@ -1037,6 +1183,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
           onSaveRename={saveRename}
           onPollOnu={pollOnu}
           activePollingIds={activePollingIds}
+          failedPolls={effectiveFailedPolls}
           onSyncCustomers={syncCustomersAndMikrotik}
           syncingCustomers={syncingCustomers}
         />
@@ -1314,11 +1461,13 @@ function DashboardView({
   alerts,
   notice,
   activePollingIds,
+  failedPolls,
 }: {
   olts: Olt[];
   alerts: Alert[];
   notice: string;
   activePollingIds: string[];
+  failedPolls: Record<string, FailedPollInfo>;
 }) {
   return (
     <section className="mt-4 grid gap-4 xl:grid-cols-[1fr_360px]">
@@ -1342,6 +1491,7 @@ function DashboardView({
                 key={olt.id}
                 olt={olt}
                 isPolling={activePollingIds.includes(olt.id)}
+                failedPoll={failedPolls[olt.id]}
               />
             ))}
           </div>
@@ -1421,7 +1571,15 @@ function oltAccent(olt: Olt) {
   };
 }
 
-function OltSummary({ olt, isPolling }: { olt: Olt; isPolling?: boolean }) {
+function OltSummary({
+  olt,
+  isPolling,
+  failedPoll,
+}: {
+  olt: Olt;
+  isPolling?: boolean;
+  failedPoll?: FailedPollInfo;
+}) {
   const accent = oltAccent(olt);
 
   return (
@@ -1443,7 +1601,7 @@ function OltSummary({ olt, isPolling }: { olt: Olt; isPolling?: boolean }) {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {isPolling && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 animate-pulse">
               <RefreshCcw
@@ -1453,9 +1611,33 @@ function OltSummary({ olt, isPolling }: { olt: Olt; isPolling?: boolean }) {
               Polling SNMP...
             </span>
           )}
+          {!isPolling && failedPoll && (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800 dark:border-red-700 dark:bg-red-950/70 dark:text-red-200"
+              title={`${failedPoll.message} (${failedPoll.failedAt})`}
+            >
+              <CircleAlert
+                className="h-3 w-3 text-red-600"
+                aria-hidden="true"
+              />
+              Polling Gagal
+            </span>
+          )}
           <StatusBadge value={olt.status} />
         </div>
       </div>
+      {!isPolling && failedPoll && (
+        <div className="mt-2.5 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50/80 px-3 py-1.5 text-xs text-red-800 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-200">
+          <CircleAlert
+            className="h-3.5 w-3.5 shrink-0 text-red-600"
+            aria-hidden="true"
+          />
+          <span className="truncate">
+            <strong>Gagal Poll:</strong> {failedPoll.message} (
+            {failedPoll.failedAt})
+          </span>
+        </div>
+      )}
       <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
         <InfoTile
           label="Tipe Perangkat"
@@ -1655,6 +1837,7 @@ function OltListPanel({
   onTestWrite,
   onPollOnu,
   activePollingIds,
+  failedPolls,
   onRemove,
 }: {
   olts: Olt[];
@@ -1666,6 +1849,7 @@ function OltListPanel({
   onTestWrite: (olt: Olt) => void;
   onPollOnu: (olt: Olt) => void;
   activePollingIds: string[];
+  failedPolls: Record<string, FailedPollInfo>;
   onRemove: (olt: Olt) => void;
 }) {
   return (
@@ -1690,25 +1874,32 @@ function OltListPanel({
             const accent = oltAccent(olt);
             const selected = selectedOltId === olt.id;
             const isPolling = activePollingIds.includes(olt.id);
+            const failedPoll = failedPolls[olt.id];
 
             return (
               <div
                 key={olt.id}
                 className={`relative grid overflow-hidden rounded-3xl border p-5 shadow-sm transition md:grid-cols-[1fr_auto] ${
-                  selected
-                    ? accent.selectedCard
-                    : `${accent.card} hover:-translate-y-0.5 hover:shadow-lg`
+                  !isPolling && failedPoll
+                    ? "border-red-300 bg-gradient-to-br from-red-50/85 via-white/85 to-rose-50/75 shadow-red-950/10"
+                    : selected
+                      ? accent.selectedCard
+                      : `${accent.card} hover:-translate-y-0.5 hover:shadow-lg`
                 }`}
               >
                 <span
-                  className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${accent.strip}`}
+                  className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${
+                    !isPolling && failedPoll
+                      ? "from-red-500 via-rose-400 to-orange-400"
+                      : accent.strip
+                  }`}
                 />
                 <OltHeaderInfo
                   olt={olt}
                   accent={accent}
                   onSelect={() => onSelect(olt.id)}
                 />
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {isPolling && (
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 animate-pulse">
                       <RefreshCcw
@@ -1716,6 +1907,18 @@ function OltListPanel({
                         aria-hidden="true"
                       />
                       Polling SNMP...
+                    </span>
+                  )}
+                  {!isPolling && failedPoll && (
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800 dark:border-red-700 dark:bg-red-950/70 dark:text-red-200"
+                      title={`${failedPoll.message} (${failedPoll.failedAt})`}
+                    >
+                      <CircleAlert
+                        className="h-3 w-3 text-red-600"
+                        aria-hidden="true"
+                      />
+                      Polling Gagal
                     </span>
                   )}
                   <StatusBadge value={olt.status} />
@@ -1798,6 +2001,20 @@ function OltListPanel({
                     tone={accent.tile}
                   />
                 </div>
+                {!isPolling && failedPoll && (
+                  <div className="mt-3 flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50/90 px-3.5 py-2 text-xs text-red-800 md:col-span-2 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-200">
+                    <CircleAlert
+                      className="h-4 w-4 shrink-0 text-red-600"
+                      aria-hidden="true"
+                    />
+                    <span>
+                      <strong>Polling SNMP Gagal:</strong> {failedPoll.message}{" "}
+                      <span className="opacity-75">
+                        ({failedPoll.failedAt})
+                      </span>
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -1821,6 +2038,7 @@ function OnuView(props: {
   onSaveRename: (onu: Onu) => void;
   onPollOnu: (olt: Olt) => void;
   activePollingIds: string[];
+  failedPolls: Record<string, FailedPollInfo>;
   onSyncCustomers: () => void;
   syncingCustomers: boolean;
 }) {
@@ -1837,6 +2055,9 @@ function OnuView(props: {
   const polling = Boolean(
     props.selectedOlt && props.activePollingIds.includes(props.selectedOlt.id),
   );
+  const selectedFailedPoll = props.selectedOlt
+    ? props.failedPolls[props.selectedOlt.id]
+    : undefined;
   const linkedCount = props.onus.filter((o) => Boolean(o.customerLink)).length;
   const billingLinkedCount = props.onus.filter((o) =>
     Boolean(o.customerLink?.idPelanggan),
@@ -1846,7 +2067,18 @@ function OnuView(props: {
     <section className={panelClass}>
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-sm font-semibold text-slate-950">ONU/ONT</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-sm font-semibold text-slate-950">ONU/ONT</h1>
+            {!polling && selectedFailedPoll && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
+                <CircleAlert
+                  className="h-3 w-3 text-red-600"
+                  aria-hidden="true"
+                />
+                Polling OLT Gagal
+              </span>
+            )}
+          </div>
           <p className="text-sm text-slate-500">
             Data RX, suhu, dan kasus down dibaca dari OID OLT.{" "}
             {props.onus.length > 0 && (
@@ -1867,6 +2099,7 @@ function OnuView(props: {
             {props.olts.map((olt) => (
               <option key={olt.id} value={olt.id}>
                 {olt.name}
+                {props.failedPolls[olt.id] ? " (Gagal Poll)" : ""}
               </option>
             ))}
           </select>
@@ -1885,7 +2118,7 @@ function OnuView(props: {
             {polling ? "Polling..." : "Poll ONU"}
           </button>
           <button
-            className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 ${props.syncingCustomers ? "animate-pulse" : ""}`}
+            className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-100 shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50 ${props.syncingCustomers ? "animate-pulse" : ""}`}
             type="button"
             disabled={props.syncingCustomers}
             onClick={props.onSyncCustomers}
