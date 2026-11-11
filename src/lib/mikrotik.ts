@@ -61,6 +61,20 @@ export function getConfiguredRouters(): MikrotikRouterConfig[] {
       username: process.env.POP4_CORE_USERNAME || "mirza",
       password: process.env.POP4_CORE_PASSWORD || "apple20",
     },
+    {
+      name: process.env.POP5_CORE_NAME || "CALM-GP2-TKR",
+      host: process.env.POP5_CORE_HOST || "36.50.109.2",
+      port: Number(process.env.POP5_CORE_PORT || 8123),
+      username: process.env.POP5_CORE_USERNAME || "mirza",
+      password: process.env.POP5_CORE_PASSWORD || "apple20",
+    },
+    {
+      name: process.env.POP6_CORE_NAME || "CALM-E5-BRK",
+      host: process.env.POP6_CORE_HOST || "115.84.175.5",
+      port: Number(process.env.POP6_CORE_PORT || 8123),
+      username: process.env.POP6_CORE_USERNAME || "mirza",
+      password: process.env.POP6_CORE_PASSWORD || "apple20",
+    },
   ]
 
   return defaults.filter((r) => Boolean(r.host && r.port && r.username))

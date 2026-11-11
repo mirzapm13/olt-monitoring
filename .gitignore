@@ -9,4 +9,6 @@ coverage
 .env.test.local
 .env.production.local
 data/monitoring-db.json
+data/backup-*.json
+tsconfig.tsbuildinfo
 
