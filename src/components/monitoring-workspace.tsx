@@ -1,59 +1,102 @@
-"use client"
+"use client";
 
-import { CircleAlert, CircleCheck, Database, Eye, EyeOff, HeartHandshake, Info, Mail, MessageCircle, Pencil, Plus, Power, RefreshCcw, Router, Save, Search, Shield, Trash2, UserCog, Wifi, X } from "lucide-react"
-import Image from "next/image"
-import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  CircleAlert,
+  CircleCheck,
+  Database,
+  Eye,
+  EyeOff,
+  HeartHandshake,
+  Info,
+  Mail,
+  MessageCircle,
+  Pencil,
+  Plus,
+  Power,
+  RefreshCcw,
+  Router,
+  Save,
+  Search,
+  Shield,
+  Trash2,
+  UserCog,
+  Wifi,
+  X,
+} from "lucide-react";
+import Image from "next/image";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { authStorageKey, roleDescriptions, roleLabels, type AppRole, type AuthAuditLog, type AuthSession, type PublicUser } from "@/lib/auth-types"
-import type { OidProfileKey } from "@/lib/oid-catalog"
-import type { Alert, MonitoringState, Olt, Onu, TelegramSettings } from "@/lib/types"
-import { MetricCard } from "@/components/metric-card"
-import { StatusBadge } from "@/components/status-badge"
+import {
+  authStorageKey,
+  roleDescriptions,
+  roleLabels,
+  type AppRole,
+  type AuthAuditLog,
+  type AuthSession,
+  type PublicUser,
+} from "@/lib/auth-types";
+import type { OidProfileKey } from "@/lib/oid-catalog";
+import type {
+  Alert,
+  MonitoringState,
+  Olt,
+  Onu,
+  TelegramSettings,
+} from "@/lib/types";
+import { MetricCard } from "@/components/metric-card";
+import { StatusBadge } from "@/components/status-badge";
 
-type View = "dashboard" | "olts" | "onus" | "alerts" | "settings" | "system" | "about"
-type ToastTone = "info" | "success" | "error"
+type View =
+  | "dashboard"
+  | "olts"
+  | "onus"
+  | "alerts"
+  | "settings"
+  | "system"
+  | "about";
+type ToastTone = "info" | "success" | "error";
 type ToastState = {
-  message: string
-  tone: ToastTone
-} | null
-type ClearAlertsMode = "acknowledged" | "all"
+  message: string;
+  tone: ToastTone;
+} | null;
+type ClearAlertsMode = "acknowledged" | "all";
 type PollOnuNotification = {
-  checked: number
-  downDetected: number
-  recoveryDetected: number
-  sent: number
-  failed: number
-  skipped: boolean
-  message: string
-}
+  checked: number;
+  downDetected: number;
+  recoveryDetected: number;
+  sent: number;
+  failed: number;
+  skipped: boolean;
+  message: string;
+};
 type StartupStatus = {
-  enabled: boolean
-  path?: string
-  platform?: string
-  supported?: "automatic" | "manual" | "unsupported"
-  message?: string
+  enabled: boolean;
+  path?: string;
+  platform?: string;
+  supported?: "automatic" | "manual" | "unsupported";
+  message?: string;
   linux?: {
-    serviceName: string
-    servicePath: string
-    service: string
-    commands: string[]
-    disableCommands: string[]
-  } | null
-}
+    serviceName: string;
+    servicePath: string;
+    service: string;
+    commands: string[];
+    disableCommands: string[];
+  } | null;
+};
 
-const legacyStorageKey = "mikroin-monitor-state-v2"
+const legacyStorageKey = "mikroin-monitor-state-v2";
 
 type OltForm = {
-  name: string
-  ipAddress: string
-  vendor: Olt["vendor"]
-  snmpPort: string
-  readCommunity: string
-  writeCommunity: string
-  oidProfile: OidProfileKey
-  pollingInterval: string
-  writeMode: Olt["writeMode"]
-}
+  name: string;
+  ipAddress: string;
+  vendor: Olt["vendor"];
+  snmpPort: string;
+  readCommunity: string;
+  writeCommunity: string;
+  oidProfile: OidProfileKey;
+  pollingInterval: string;
+  writeMode: Olt["writeMode"];
+};
 
 const emptyState: MonitoringState = {
   olts: [],
@@ -70,7 +113,7 @@ const emptyState: MonitoringState = {
       lastUpdateId: 0,
     },
   },
-}
+};
 
 const emptyForm: OltForm = {
   name: "",
@@ -82,63 +125,65 @@ const emptyForm: OltForm = {
   oidProfile: "vsol-gpon",
   pollingInterval: "60",
   writeMode: "none",
-}
+};
 
-const panelClass = "rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm backdrop-blur"
-const tableShellClass = "mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white/60"
+const panelClass =
+  "rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm backdrop-blur";
+const tableShellClass =
+  "mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white/60";
 const fieldClass =
-  "mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
+  "mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100";
 const secondaryButtonClass =
-  "inline-flex h-9 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
+  "inline-flex h-9 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45";
 const cyanButtonClass =
-  "inline-flex h-9 items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 text-xs font-semibold text-cyan-800 shadow-sm transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+  "inline-flex h-9 items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 text-xs font-semibold text-cyan-800 shadow-sm transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50";
 
 function supportsSnmpRename(olt: Olt | undefined) {
-  return olt?.oidProfile === "hsgq-gpon"
+  return olt?.oidProfile === "hsgq-gpon";
 }
 
 function supportsSnmpWriteTest(olt: Olt | undefined) {
-  return olt?.oidProfile === "hsgq-gpon"
+  return olt?.oidProfile === "hsgq-gpon";
 }
 
 function startupDescription(status: StartupStatus) {
   if (status.platform === "windows") {
-    return "Jika aktif, Mikroin Monitor akan menjalankan server lokal otomatis setelah Windows login."
+    return "Jika aktif, Mikroin Monitor akan menjalankan server lokal otomatis setelah Windows login.";
   }
 
   if (status.platform === "linux" || status.supported === "manual") {
-    return "Linux memakai systemd. Gunakan tombol install otomatis jika server berjalan dengan akses root, atau jalankan command manual di bawah lewat terminal dengan sudo."
+    return "Linux memakai systemd. Gunakan tombol install otomatis jika server berjalan dengan akses root, atau jalankan command manual di bawah lewat terminal dengan sudo.";
   }
 
   if (status.platform === "macos") {
-    return "Platform macOS belum didukung otomatis dari UI. Gunakan service manager bawaan OS jika ingin menjalankan server saat startup."
+    return "Platform macOS belum didukung otomatis dari UI. Gunakan service manager bawaan OS jika ingin menjalankan server saat startup.";
   }
 
-  return "Mikroin Monitor akan membaca platform server terlebih dahulu sebelum menampilkan panduan startup yang sesuai."
+  return "Mikroin Monitor akan membaca platform server terlebih dahulu sebelum menampilkan panduan startup yang sesuai.";
 }
 
 function startupPlatformLabel(status: StartupStatus) {
-  if (status.platform === "windows") return "Windows"
-  if (status.platform === "linux") return "Linux"
-  if (status.platform === "macos") return "macOS"
-  if (status.platform) return status.platform
-  if (status.message) return "Belum terbaca"
-  return "Memuat..."
+  if (status.platform === "windows") return "Windows";
+  if (status.platform === "linux") return "Linux";
+  if (status.platform === "macos") return "macOS";
+  if (status.platform) return status.platform;
+  if (status.message) return "Belum terbaca";
+  return "Memuat...";
 }
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat("id-ID").format(value)
+  return new Intl.NumberFormat("id-ID").format(value);
 }
 
 function profileForVendor(vendor: Olt["vendor"]): OidProfileKey {
-  if (vendor === "VSOL" || vendor === "VSOL GPON") return "vsol-gpon"
-  if (vendor === "VSOL EPON V16004DL") return "vsol-epon-v16004dl"
-  if (vendor === "VSOL EPON V1600D8") return "vsol-epon-v1600d8"
-  if (vendor === "VSOL EPON") return "vsol-epon-v1600d8"
-  if (vendor === "HSGQ GPON") return "hsgq-gpon"
-  if (vendor === "HSGQ EPON") return "hsgq-epon"
-  if (vendor === "HiOSO EPON") return "hioso-epon"
-  return "generic"
+  if (vendor === "VSOL" || vendor === "VSOL GPON") return "vsol-gpon";
+  if (vendor === "VSOL EPON V16004DL") return "vsol-epon-v16004dl";
+  if (vendor === "VSOL EPON V1600D8") return "vsol-epon-v1600d8";
+  if (vendor === "VSOL EPON") return "vsol-epon-v1600d8";
+  if (vendor === "HSGQ GPON") return "hsgq-gpon";
+  if (vendor === "HSGQ EPON") return "hsgq-epon";
+  if (vendor === "HiOSO EPON") return "hioso-epon";
+  return "generic";
 }
 
 function formFromOlt(olt: Olt): OltForm {
@@ -152,16 +197,16 @@ function formFromOlt(olt: Olt): OltForm {
     oidProfile: olt.oidProfile,
     pollingInterval: String(olt.pollingInterval || 60),
     writeMode: olt.writeMode,
-  }
+  };
 }
 
 function readLegacyBrowserState() {
-  const raw = window.localStorage.getItem(legacyStorageKey)
-  if (!raw) return null
+  const raw = window.localStorage.getItem(legacyStorageKey);
+  if (!raw) return null;
 
   try {
-    const parsed = JSON.parse(raw) as Partial<MonitoringState>
-    if (!Array.isArray(parsed.olts) || parsed.olts.length === 0) return null
+    const parsed = JSON.parse(raw) as Partial<MonitoringState>;
+    if (!Array.isArray(parsed.olts) || parsed.olts.length === 0) return null;
 
     return {
       olts: parsed.olts,
@@ -173,150 +218,158 @@ function readLegacyBrowserState() {
           ...(parsed.settings?.telegram ?? {}),
         },
       },
-    }
+    };
   } catch {
-    return null
+    return null;
   }
 }
 
 function clearLegacyBrowserState() {
-  window.localStorage.removeItem(legacyStorageKey)
+  window.localStorage.removeItem(legacyStorageKey);
 }
 
 export function MonitoringWorkspace({ view }: { view: View }) {
-  const [storedState, setStoredState] = useState<MonitoringState>(emptyState)
-  const [selectedOltId, setSelectedOltId] = useState("")
-  const [editingOltId, setEditingOltId] = useState<string | null>(null)
-  const [activePollingIds, setActivePollingIds] = useState<string[]>([])
-  const [query, setQuery] = useState("")
-  const [editingOnuId, setEditingOnuId] = useState<string | null>(null)
-  const [draftName, setDraftName] = useState("")
-  const [notice, setNotice] = useState("Memuat database monitoring...")
-  const [toast, setToast] = useState<ToastState>(null)
-  const [form, setForm] = useState<OltForm>(emptyForm)
-  const [deleteCandidate, setDeleteCandidate] = useState<Olt | null>(null)
-  const [clearAlertsMode, setClearAlertsMode] = useState<ClearAlertsMode | null>(null)
-  const stateRef = useRef(storedState)
-  const pollingLocksRef = useRef(new Set<string>())
-  const pollOnuRef = useRef<(olt: Olt, options?: { silent?: boolean }) => Promise<void>>(async () => undefined)
-  const { alerts, olts, onus, settings } = storedState
+  const [storedState, setStoredState] = useState<MonitoringState>(emptyState);
+  const [selectedOltId, setSelectedOltId] = useState("");
+  const [editingOltId, setEditingOltId] = useState<string | null>(null);
+  const [activePollingIds, setActivePollingIds] = useState<string[]>([]);
+  const [query, setQuery] = useState("");
+  const [editingOnuId, setEditingOnuId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [notice, setNotice] = useState("Memuat database monitoring...");
+  const [toast, setToast] = useState<ToastState>(null);
+  const [form, setForm] = useState<OltForm>(emptyForm);
+  const [deleteCandidate, setDeleteCandidate] = useState<Olt | null>(null);
+  const [clearAlertsMode, setClearAlertsMode] =
+    useState<ClearAlertsMode | null>(null);
+  const stateRef = useRef(storedState);
+  const pollingLocksRef = useRef(new Set<string>());
+  const pollOnuRef = useRef<
+    (olt: Olt, options?: { silent?: boolean }) => Promise<void>
+  >(async () => undefined);
+  const { alerts, olts, onus, settings } = storedState;
 
   function showToast(message: string, tone: ToastTone = "info") {
-    setToast({ message, tone })
+    setToast({ message, tone });
   }
 
   useEffect(() => {
-    stateRef.current = storedState
-  }, [storedState])
+    stateRef.current = storedState;
+  }, [storedState]);
 
   useEffect(() => {
-    let cancelled = false
+    let cancelled = false;
 
     fetch("/api/monitoring/state")
       .then((response) => response.json() as Promise<MonitoringState>)
       .then((state) => {
-        if (cancelled) return
-        const legacyState = state.olts.length === 0 ? readLegacyBrowserState() : null
-        const nextState = legacyState ?? state
+        if (cancelled) return;
+        const legacyState =
+          state.olts.length === 0 ? readLegacyBrowserState() : null;
+        const nextState = legacyState ?? state;
 
-        stateRef.current = nextState
-        setStoredState(nextState)
-        setSelectedOltId(nextState.olts[0]?.id ?? "")
+        stateRef.current = nextState;
+        setStoredState(nextState);
+        setSelectedOltId(nextState.olts[0]?.id ?? "");
         setNotice(
           legacyState
             ? "Data OLT lama dari browser berhasil dimigrasikan ke database lokal."
             : nextState.olts.length === 0
               ? "Database awal kosong. Tambahkan OLT untuk mulai monitoring."
               : "Database OLT berhasil dimuat.",
-        )
+        );
 
         if (legacyState) {
           void fetch("/api/monitoring/state", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(legacyState),
-          }).then(() => clearLegacyBrowserState())
+          }).then(() => clearLegacyBrowserState());
         } else {
-          clearLegacyBrowserState()
+          clearLegacyBrowserState();
         }
       })
       .catch(() => {
-        if (!cancelled) setNotice("Database belum bisa dibaca. Coba refresh atau cek server lokal.")
-      })
+        if (!cancelled)
+          setNotice(
+            "Database belum bisa dibaca. Coba refresh atau cek server lokal.",
+          );
+      });
 
     return () => {
-      cancelled = true
-    }
-  }, [])
+      cancelled = true;
+    };
+  }, []);
 
   const syncServerActivePolls = useCallback(async () => {
     try {
-      const res = await fetch("/api/snmp/poll-onu")
-      if (!res.ok) return
-      const data = (await res.json()) as { activePolls?: string[] }
+      const res = await fetch("/api/snmp/poll-onu");
+      if (!res.ok) return;
+      const data = (await res.json()) as { activePolls?: string[] };
       if (Array.isArray(data.activePolls)) {
         setActivePollingIds((current) => {
           const isSame =
             current.length === data.activePolls!.length &&
-            current.every((id) => data.activePolls!.includes(id))
-          return isSame ? current : data.activePolls!
-        })
+            current.every((id) => data.activePolls!.includes(id));
+          return isSame ? current : data.activePolls!;
+        });
       }
     } catch {
       // Ignore network errors on active poll check
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    void syncServerActivePolls()
-  }, [syncServerActivePolls])
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void syncServerActivePolls();
+  }, [syncServerActivePolls]);
 
   useEffect(() => {
-    if (activePollingIds.length === 0) return
+    if (activePollingIds.length === 0) return;
 
     const interval = window.setInterval(async () => {
       try {
-        const res = await fetch("/api/snmp/poll-onu")
-        if (!res.ok) return
-        const data = (await res.json()) as { activePolls?: string[] }
+        const res = await fetch("/api/snmp/poll-onu");
+        if (!res.ok) return;
+        const data = (await res.json()) as { activePolls?: string[] };
         if (Array.isArray(data.activePolls)) {
           if (data.activePolls.length === 0) {
-            const stateRes = await fetch("/api/monitoring/state")
+            const stateRes = await fetch("/api/monitoring/state");
             if (stateRes.ok) {
-              const nextState = (await stateRes.json()) as MonitoringState
-              stateRef.current = nextState
-              setStoredState(nextState)
+              const nextState = (await stateRes.json()) as MonitoringState;
+              stateRef.current = nextState;
+              setStoredState(nextState);
             }
-            setActivePollingIds([])
+            setActivePollingIds([]);
           } else {
-            setActivePollingIds(data.activePolls)
+            setActivePollingIds(data.activePolls);
           }
         }
       } catch {
         // Ignore network errors on polling status check
       }
-    }, 1500)
+    }, 1500);
 
-    return () => window.clearInterval(interval)
-  }, [activePollingIds.length])
+    return () => window.clearInterval(interval);
+  }, [activePollingIds.length]);
 
   useEffect(() => {
-    if (!toast) return
+    if (!toast) return;
 
-    const timer = window.setTimeout(() => setToast(null), 5000)
-    return () => window.clearTimeout(timer)
-  }, [toast])
+    const timer = window.setTimeout(() => setToast(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   async function commitState(nextState: MonitoringState) {
-    stateRef.current = nextState
-    setStoredState(nextState)
+    stateRef.current = nextState;
+    setStoredState(nextState);
     const response = await fetch("/api/monitoring/state", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(nextState),
-    })
-    if (!response.ok) throw new Error("Database gagal disimpan.")
-    clearLegacyBrowserState()
+    });
+    if (!response.ok) throw new Error("Database gagal disimpan.");
+    clearLegacyBrowserState();
   }
 
   function updateTelegramSettings(nextTelegram: TelegramSettings) {
@@ -326,116 +379,142 @@ export function MonitoringWorkspace({ view }: { view: View }) {
         ...settings,
         telegram: nextTelegram,
       },
-    }
+    };
 
-    void commitState(nextState)
-    setNotice("Setting Telegram tersimpan.")
+    void commitState(nextState);
+    setNotice("Setting Telegram tersimpan.");
   }
 
   async function testTelegram(settingsToTest: TelegramSettings) {
-    setNotice("Mengirim test Telegram...")
-    showToast("Mengirim test Telegram...", "info")
+    setNotice("Mengirim test Telegram...");
+    showToast("Mengirim test Telegram...", "info");
 
     try {
       const response = await fetch("/api/telegram/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settingsToTest),
-      })
-      const result = (await response.json()) as { ok?: boolean; message?: string }
-      const message = result.message || (response.ok ? "Test Telegram selesai." : "Test Telegram gagal.")
+      });
+      const result = (await response.json()) as {
+        ok?: boolean;
+        message?: string;
+      };
+      const message =
+        result.message ||
+        (response.ok ? "Test Telegram selesai." : "Test Telegram gagal.");
 
-      setNotice(message)
-      showToast(message, result.ok ? "success" : "error")
+      setNotice(message);
+      showToast(message, result.ok ? "success" : "error");
     } catch (error) {
-      const message = error instanceof Error ? `Test Telegram gagal: ${error.message}` : "Test Telegram gagal dijalankan."
+      const message =
+        error instanceof Error
+          ? `Test Telegram gagal: ${error.message}`
+          : "Test Telegram gagal dijalankan.";
 
-      setNotice(message)
-      showToast(message, "error")
+      setNotice(message);
+      showToast(message, "error");
     }
   }
 
-  const selectedOlt = olts.find((olt) => olt.id === selectedOltId) ?? olts[0]
-  const [syncingCustomers, setSyncingCustomers] = useState(false)
+  const selectedOlt = olts.find((olt) => olt.id === selectedOltId) ?? olts[0];
+  const [syncingCustomers, setSyncingCustomers] = useState(false);
 
   async function syncCustomersAndMikrotik() {
-    if (syncingCustomers) return
-    setSyncingCustomers(true)
-    setNotice("Menghubungkan ke 4 Router Mikrotik, isp_ops_db, dan olt_db...")
-    showToast("Sync Mikrotik & Customer sedang berjalan...", "info")
+    if (syncingCustomers) return;
+    setSyncingCustomers(true);
+    setNotice("Menghubungkan ke 4 Router Mikrotik, isp_ops_db, dan olt_db...");
+    showToast("Sync Mikrotik & Customer sedang berjalan...", "info");
 
     try {
       const response = await fetch("/api/customer-sync", {
         method: "POST",
-      })
+      });
       const result = (await response.json()) as {
-        ok?: boolean
-        message?: string
-        state?: MonitoringState
-      }
+        ok?: boolean;
+        message?: string;
+        state?: MonitoringState;
+      };
 
       if (result.state) {
-        stateRef.current = result.state
-        setStoredState(result.state)
+        stateRef.current = result.state;
+        setStoredState(result.state);
       }
 
-      const msg = result.message || (result.ok ? "Sync Mikrotik & Customer selesai." : "Sync gagal.")
-      setNotice(msg)
-      showToast(msg, result.ok ? "success" : "error")
+      const msg =
+        result.message ||
+        (result.ok ? "Sync Mikrotik & Customer selesai." : "Sync gagal.");
+      setNotice(msg);
+      showToast(msg, result.ok ? "success" : "error");
     } catch (error) {
-      const msg = error instanceof Error ? `Sync gagal: ${error.message}` : "Sync Mikrotik & Customer gagal."
-      setNotice(msg)
-      showToast(msg, "error")
+      const msg =
+        error instanceof Error
+          ? `Sync gagal: ${error.message}`
+          : "Sync Mikrotik & Customer gagal.";
+      setNotice(msg);
+      showToast(msg, "error");
     } finally {
-      setSyncingCustomers(false)
+      setSyncingCustomers(false);
     }
   }
 
   const selectedOnus = onus
     .filter((onu) => onu.oltId === selectedOlt?.id)
     .sort((a, b) => {
-      const ponDiff = String(a.ponPort).localeCompare(String(b.ponPort), undefined, { numeric: true })
-      if (ponDiff !== 0) return ponDiff
-      return String(a.onuIndex).localeCompare(String(b.onuIndex), undefined, { numeric: true })
-    })
+      const ponDiff = String(a.ponPort).localeCompare(
+        String(b.ponPort),
+        undefined,
+        { numeric: true },
+      );
+      if (ponDiff !== 0) return ponDiff;
+      return String(a.onuIndex).localeCompare(String(b.onuIndex), undefined, {
+        numeric: true,
+      });
+    });
   const filteredOnus = selectedOnus.filter((onu) => {
-    const link = onu.customerLink
+    const link = onu.customerLink;
     const linkText = link
       ? `${link.namaPelanggan ?? ""} ${link.idPelanggan ?? ""} ${link.ipSecret} ${link.routerName} ${link.pppoeMac} ${link.alamat ?? ""}`
-      : ""
-    const value = `${onu.name} ${onu.serialNumber} ${onu.ponPort}:${onu.onuIndex} ${onu.ponPort}/${onu.onuIndex} ${linkText}`.toLowerCase()
-    return value.includes(query.toLowerCase())
-  })
+      : "";
+    const value =
+      `${onu.name} ${onu.serialNumber} ${onu.ponPort}:${onu.onuIndex} ${onu.ponPort}/${onu.onuIndex} ${linkText}`.toLowerCase();
+    return value.includes(query.toLowerCase());
+  });
 
-  const onlineOlts = olts.filter((olt) => olt.status === "online").length
-  const totalOnu = onus.length
-  const downOnu = onus.filter((onu) => onu.status !== "online").length
-  const operationalAlerts = buildOperationalAlerts(olts, onus, alerts)
-  const openAlerts = operationalAlerts.filter((alert) => !alert.acknowledged).length
+  const onlineOlts = olts.filter((olt) => olt.status === "online").length;
+  const totalOnu = onus.length;
+  const downOnu = onus.filter((onu) => onu.status !== "online").length;
+  const operationalAlerts = buildOperationalAlerts(olts, onus, alerts);
+  const openAlerts = operationalAlerts.filter(
+    (alert) => !alert.acknowledged,
+  ).length;
   const activelyPollingOltNames = olts
     .filter((olt) => activePollingIds.includes(olt.id))
-    .map((olt) => olt.name)
+    .map((olt) => olt.name);
 
   function updateForm<K extends keyof OltForm>(key: K, value: OltForm[K]) {
-    setForm((current) => ({ ...current, [key]: value }))
+    setForm((current) => ({ ...current, [key]: value }));
   }
 
   function updateVendor(vendor: Olt["vendor"]) {
-    setForm((current) => ({ ...current, vendor, oidProfile: profileForVendor(vendor) }))
+    setForm((current) => ({
+      ...current,
+      vendor,
+      oidProfile: profileForVendor(vendor),
+    }));
   }
 
   async function saveOlt() {
-    const name = form.name.trim()
-    const ipAddress = form.ipAddress.trim()
-    const readCommunity = form.readCommunity.trim()
-    const writeCommunity = form.writeCommunity.trim()
-    const snmpPort = Number(form.snmpPort) || 161
-    const currentState = stateRef.current
-    const currentOlts = currentState.olts
+    const name = form.name.trim();
+    const ipAddress = form.ipAddress.trim();
+    const readCommunity = form.readCommunity.trim();
+    const writeCommunity = form.writeCommunity.trim();
+    const snmpPort = Number(form.snmpPort) || 161;
+    const currentState = stateRef.current;
+    const currentOlts = currentState.olts;
 
     if (!name || !ipAddress || !readCommunity) {
-      setNotice("Nama OLT, IP/host, dan community SNMP wajib diisi.")
-      return
+      setNotice("Nama OLT, IP/host, dan community SNMP wajib diisi.");
+      return;
     }
 
     const oltPayload = {
@@ -448,34 +527,43 @@ export function MonitoringWorkspace({ view }: { view: View }) {
       writeCommunity,
       oidProfile: form.oidProfile,
       writeMode: form.writeMode,
-    }
+    };
 
     const duplicateOlt = currentOlts.find(
-      (olt) => olt.id !== editingOltId && olt.ipAddress.trim() === ipAddress && (olt.snmpPort || 161) === snmpPort,
-    )
+      (olt) =>
+        olt.id !== editingOltId &&
+        olt.ipAddress.trim() === ipAddress &&
+        (olt.snmpPort || 161) === snmpPort,
+    );
 
     if (duplicateOlt) {
-      setSelectedOltId(duplicateOlt.id)
-      setNotice(`${duplicateOlt.name} sudah memakai IP/host dan port yang sama. Gunakan Edit jika ingin mengubah data OLT tersebut.`)
-      return
+      setSelectedOltId(duplicateOlt.id);
+      setNotice(
+        `${duplicateOlt.name} sudah memakai IP/host dan port yang sama. Gunakan Edit jika ingin mengubah data OLT tersebut.`,
+      );
+      return;
     }
 
     if (editingOltId) {
       const nextState = {
         ...currentState,
-        olts: currentOlts.map((olt) => (olt.id === editingOltId ? { ...olt, ...oltPayload } : olt)),
-      }
+        olts: currentOlts.map((olt) =>
+          olt.id === editingOltId ? { ...olt, ...oltPayload } : olt,
+        ),
+      };
 
       try {
-        await commitState(nextState)
-        setSelectedOltId(editingOltId)
-        setEditingOltId(null)
-        setForm(emptyForm)
-        setNotice(`${name} berhasil diperbarui.`)
+        await commitState(nextState);
+        setSelectedOltId(editingOltId);
+        setEditingOltId(null);
+        setForm(emptyForm);
+        setNotice(`${name} berhasil diperbarui.`);
       } catch (error) {
-        setNotice(error instanceof Error ? error.message : "Database gagal disimpan.")
+        setNotice(
+          error instanceof Error ? error.message : "Database gagal disimpan.",
+        );
       }
-      return
+      return;
     }
 
     const nextOlt: Olt = {
@@ -491,41 +579,43 @@ export function MonitoringWorkspace({ view }: { view: View }) {
       activeOnu: 0,
       snmpVersion: "v2c",
       lastSeen: "Belum pernah dipolling",
-    }
-    const nextState = { ...currentState, olts: [...currentOlts, nextOlt] }
+    };
+    const nextState = { ...currentState, olts: [...currentOlts, nextOlt] };
 
     try {
-      await commitState(nextState)
-      setSelectedOltId(nextOlt.id)
-      setForm(emptyForm)
-      setNotice(`${name} ditambahkan dan sudah tersimpan ke database lokal.`)
+      await commitState(nextState);
+      setSelectedOltId(nextOlt.id);
+      setForm(emptyForm);
+      setNotice(`${name} ditambahkan dan sudah tersimpan ke database lokal.`);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Database gagal disimpan.")
+      setNotice(
+        error instanceof Error ? error.message : "Database gagal disimpan.",
+      );
     }
   }
 
   function startEditOlt(olt: Olt) {
-    setEditingOltId(olt.id)
-    setSelectedOltId(olt.id)
-    setForm(formFromOlt(olt))
-    setNotice(`Mode edit aktif untuk ${olt.name}.`)
+    setEditingOltId(olt.id);
+    setSelectedOltId(olt.id);
+    setForm(formFromOlt(olt));
+    setNotice(`Mode edit aktif untuk ${olt.name}.`);
   }
 
   function cancelEditOlt() {
-    setEditingOltId(null)
-    setForm(emptyForm)
-    setNotice("Edit OLT dibatalkan.")
+    setEditingOltId(null);
+    setForm(emptyForm);
+    setNotice("Edit OLT dibatalkan.");
   }
 
   async function removeOlt(oltId: string) {
-    const currentState = stateRef.current
-    const removedOlt = currentState.olts.find((olt) => olt.id === oltId)
+    const currentState = stateRef.current;
+    const removedOlt = currentState.olts.find((olt) => olt.id === oltId);
 
     if (!removedOlt) {
-      const message = "OLT sudah tidak ada di database."
-      setNotice(message)
-      showToast(message, "info")
-      return
+      const message = "OLT sudah tidak ada di database.";
+      setNotice(message);
+      showToast(message, "info");
+      return;
     }
 
     const nextState = {
@@ -533,115 +623,141 @@ export function MonitoringWorkspace({ view }: { view: View }) {
       olts: currentState.olts.filter((olt) => olt.id !== oltId),
       onus: currentState.onus.filter((onu) => onu.oltId !== oltId),
       alerts: currentState.alerts.filter((alert) => alert.oltId !== oltId),
-    }
+    };
 
     try {
-      await commitState(nextState)
-      setSelectedOltId((current) => (current === oltId ? nextState.olts[0]?.id ?? "" : current))
+      await commitState(nextState);
+      setSelectedOltId((current) =>
+        current === oltId ? (nextState.olts[0]?.id ?? "") : current,
+      );
       if (editingOltId === oltId) {
-        setEditingOltId(null)
-        setForm(emptyForm)
+        setEditingOltId(null);
+        setForm(emptyForm);
       }
-      const message = `${removedOlt.name} berhasil dihapus. Data ONU/ONT dan alert terkait ikut dibersihkan.`
-      setNotice(message)
-      showToast(message, "success")
+      const message = `${removedOlt.name} berhasil dihapus. Data ONU/ONT dan alert terkait ikut dibersihkan.`;
+      setNotice(message);
+      showToast(message, "success");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Database gagal disimpan."
-      setNotice(message)
-      showToast(message, "error")
+      const message =
+        error instanceof Error ? error.message : "Database gagal disimpan.";
+      setNotice(message);
+      showToast(message, "error");
     }
   }
 
   async function clearStoredAlerts(mode: ClearAlertsMode) {
-    const currentState = stateRef.current
-    const nextAlerts = mode === "acknowledged" ? currentState.alerts.filter((alert) => !alert.acknowledged) : []
-    const removedCount = currentState.alerts.length - nextAlerts.length
+    const currentState = stateRef.current;
+    const nextAlerts =
+      mode === "acknowledged"
+        ? currentState.alerts.filter((alert) => !alert.acknowledged)
+        : [];
+    const removedCount = currentState.alerts.length - nextAlerts.length;
 
     if (removedCount <= 0) {
-      const message = mode === "acknowledged" ? "Belum ada alert selesai yang bisa dibersihkan." : "Belum ada riwayat alert yang tersimpan."
-      setNotice(message)
-      showToast(message, "info")
-      return
+      const message =
+        mode === "acknowledged"
+          ? "Belum ada alert selesai yang bisa dibersihkan."
+          : "Belum ada riwayat alert yang tersimpan.";
+      setNotice(message);
+      showToast(message, "info");
+      return;
     }
 
     try {
-      await commitState({ ...currentState, alerts: nextAlerts })
+      await commitState({ ...currentState, alerts: nextAlerts });
       const message =
         mode === "acknowledged"
           ? `${removedCount} alert selesai berhasil dibersihkan.`
-          : `${removedCount} riwayat alert berhasil dibersihkan. Alert aktif tetap muncul jika perangkat masih bermasalah.`
+          : `${removedCount} riwayat alert berhasil dibersihkan. Alert aktif tetap muncul jika perangkat masih bermasalah.`;
 
-      setNotice(message)
-      showToast(message, "success")
+      setNotice(message);
+      showToast(message, "success");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Alert gagal dibersihkan."
-      setNotice(message)
-      showToast(message, "error")
+      const message =
+        error instanceof Error ? error.message : "Alert gagal dibersihkan.";
+      setNotice(message);
+      showToast(message, "error");
     }
   }
 
   async function resetStorage() {
-    const response = await fetch("/api/monitoring/state", { method: "DELETE" })
+    const response = await fetch("/api/monitoring/state", { method: "DELETE" });
     if (!response.ok) {
-      setNotice("Reset default gagal. Coba ulangi atau cek server lokal.")
-      return
+      setNotice("Reset default gagal. Coba ulangi atau cek server lokal.");
+      return;
     }
 
-    stateRef.current = emptyState
-    setStoredState(emptyState)
-    setSelectedOltId("")
-    clearLegacyBrowserState()
-    setNotice("Reset default selesai. Database monitoring kembali kosong.")
+    stateRef.current = emptyState;
+    setStoredState(emptyState);
+    setSelectedOltId("");
+    clearLegacyBrowserState();
+    setNotice("Reset default selesai. Database monitoring kembali kosong.");
   }
 
   function startRename(onu: Onu) {
-    setEditingOnuId(onu.id)
-    setDraftName(onu.name)
+    setEditingOnuId(onu.id);
+    setDraftName(onu.name);
   }
 
   async function saveRename(onu: Onu) {
-    if (!selectedOlt) return
+    if (!selectedOlt) return;
 
     const response = await fetch("/api/onu/rename", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ olt: selectedOlt, onu, nextName: draftName }),
-    })
-    const result = (await response.json()) as { ok: boolean; syncedToDevice: boolean; message: string }
+    });
+    const result = (await response.json()) as {
+      ok: boolean;
+      syncedToDevice: boolean;
+      message: string;
+    };
 
     if (!result.ok) {
-      setNotice(result.message)
-      return
+      setNotice(result.message);
+      return;
     }
 
     const nextState = {
       ...storedState,
       onus: onus.map((item) =>
         item.id === onu.id
-          ? { ...item, name: draftName.trim(), syncStatus: result.syncedToDevice ? ("synced" as const) : ("pending" as const) }
+          ? {
+              ...item,
+              name: draftName.trim(),
+              syncStatus: result.syncedToDevice
+                ? ("synced" as const)
+                : ("pending" as const),
+            }
           : item,
       ),
-    }
+    };
 
-    void commitState(nextState)
-    setEditingOnuId(null)
-    setNotice(result.message)
+    void commitState(nextState);
+    setEditingOnuId(null);
+    setNotice(result.message);
   }
 
   async function testConnection(olt: Olt) {
-    setNotice(`Menghubungi ${olt.ipAddress}:${olt.snmpPort} lewat SNMP...`)
+    setNotice(`Menghubungi ${olt.ipAddress}:${olt.snmpPort} lewat SNMP...`);
     const response = await fetch("/api/snmp/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(olt),
-    })
-    const result = (await response.json()) as { ok: boolean; message: string; values?: Record<string, string> }
-    const currentState = stateRef.current
-    const currentOlt = currentState.olts.find((item) => item.id === olt.id)
+    });
+    const result = (await response.json()) as {
+      ok: boolean;
+      message: string;
+      values?: Record<string, string>;
+    };
+    const currentState = stateRef.current;
+    const currentOlt = currentState.olts.find((item) => item.id === olt.id);
 
     if (!currentOlt) {
-      setNotice(`${olt.name} sudah dihapus. Hasil test koneksi tidak disimpan.`)
-      return
+      setNotice(
+        `${olt.name} sudah dihapus. Hasil test koneksi tidak disimpan.`,
+      );
+      return;
     }
 
     const nextState = {
@@ -659,32 +775,34 @@ export function MonitoringWorkspace({ view }: { view: View }) {
             }
           : item,
       ),
-    }
+    };
 
-    await commitState(nextState)
-    setNotice(result.message)
+    await commitState(nextState);
+    setNotice(result.message);
   }
 
   async function testWriteCommunity(olt: Olt) {
-    setNotice(`Mengetes Write Community untuk ${olt.name}...`)
+    setNotice(`Mengetes Write Community untuk ${olt.name}...`);
     const response = await fetch("/api/snmp/test-write", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(olt),
-    })
-    const result = (await response.json()) as { ok: boolean; message: string }
+    });
+    const result = (await response.json()) as { ok: boolean; message: string };
 
-    setNotice(result.message)
+    setNotice(result.message);
   }
 
   async function pollOnu(olt: Olt, options: { silent?: boolean } = {}) {
-    if (pollingLocksRef.current.has(olt.id)) return
+    if (pollingLocksRef.current.has(olt.id)) return;
 
-    const silent = Boolean(options.silent)
-    pollingLocksRef.current.add(olt.id)
-    setActivePollingIds((prev) => (prev.includes(olt.id) ? prev : [...prev, olt.id]))
+    const silent = Boolean(options.silent);
+    pollingLocksRef.current.add(olt.id);
+    setActivePollingIds((prev) =>
+      prev.includes(olt.id) ? prev : [...prev, olt.id],
+    );
     if (!silent) {
-      setNotice(`Membaca data ONU/ONT dari ${olt.name}...`)
+      setNotice(`Membaca data ONU/ONT dari ${olt.name}...`);
     }
 
     try {
@@ -692,29 +810,39 @@ export function MonitoringWorkspace({ view }: { view: View }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(olt),
-      })
+      });
       const result = (await response.json()) as {
-        ok: boolean
-        message: string
-        onus?: Onu[]
-        state?: MonitoringState
-        notification?: Partial<PollOnuNotification> & { message: string }
-      }
+        ok: boolean;
+        message: string;
+        onus?: Onu[];
+        state?: MonitoringState;
+        notification?: Partial<PollOnuNotification> & { message: string };
+      };
 
       if (!result.ok) {
         if (result.state) {
-          stateRef.current = result.state
-          setStoredState(result.state)
+          stateRef.current = result.state;
+          setStoredState(result.state);
         }
-        if (result.notification && ((result.notification.sent ?? 0) > 0 || (result.notification.failed ?? 0) > 0)) {
-          showToast(result.notification.message, (result.notification.failed ?? 0) > 0 ? "error" : "success")
+        if (
+          result.notification &&
+          ((result.notification.sent ?? 0) > 0 ||
+            (result.notification.failed ?? 0) > 0)
+        ) {
+          showToast(
+            result.notification.message,
+            (result.notification.failed ?? 0) > 0 ? "error" : "success",
+          );
         }
-        if (!silent) setNotice(result.message)
-        return
+        if (!silent) setNotice(result.message);
+        return;
       }
 
-      const currentState = stateRef.current
-      const nextOnus = [...currentState.onus.filter((onu) => onu.oltId !== olt.id), ...(result.onus ?? [])]
+      const currentState = stateRef.current;
+      const nextOnus = [
+        ...currentState.onus.filter((onu) => onu.oltId !== olt.id),
+        ...(result.onus ?? []),
+      ];
       const nextState =
         result.state ??
         ({
@@ -725,49 +853,65 @@ export function MonitoringWorkspace({ view }: { view: View }) {
               ? {
                   ...item,
                   status: "online" as const,
-                  activeOnu: result.onus?.filter((onu) => onu.status === "online").length ?? 0,
+                  activeOnu:
+                    result.onus?.filter((onu) => onu.status === "online")
+                      .length ?? 0,
                   lastSeen: "Baru saja",
                 }
               : item,
           ),
-        } satisfies MonitoringState)
+        } satisfies MonitoringState);
 
-      stateRef.current = nextState
-      setStoredState(nextState)
+      stateRef.current = nextState;
+      setStoredState(nextState);
 
-      const notificationMessage = result.notification?.message
+      const notificationMessage = result.notification?.message;
       if (!silent) {
-        setNotice(notificationMessage ? `${result.message} ${notificationMessage}` : result.message)
+        setNotice(
+          notificationMessage
+            ? `${result.message} ${notificationMessage}`
+            : result.message,
+        );
       }
-      if (result.notification && ((result.notification.sent ?? 0) > 0 || (result.notification.failed ?? 0) > 0)) {
-        showToast(result.notification.message, (result.notification.failed ?? 0) > 0 ? "error" : "success")
+      if (
+        result.notification &&
+        ((result.notification.sent ?? 0) > 0 ||
+          (result.notification.failed ?? 0) > 0)
+      ) {
+        showToast(
+          result.notification.message,
+          (result.notification.failed ?? 0) > 0 ? "error" : "success",
+        );
       }
     } catch (error) {
-      if (!silent) setNotice(error instanceof Error ? error.message : "Polling ONU gagal.")
+      if (!silent)
+        setNotice(
+          error instanceof Error ? error.message : "Polling ONU gagal.",
+        );
     } finally {
-      pollingLocksRef.current.delete(olt.id)
-      setActivePollingIds((prev) => prev.filter((id) => id !== olt.id))
+      pollingLocksRef.current.delete(olt.id);
+      setActivePollingIds((prev) => prev.filter((id) => id !== olt.id));
     }
   }
 
   useEffect(() => {
-    pollOnuRef.current = pollOnu
-  })
+    pollOnuRef.current = pollOnu;
+  });
 
   useEffect(() => {
-    if (olts.length === 0) return
+    if (olts.length === 0) return;
 
     const timers = olts.map((olt) => {
-      const intervalSeconds = Math.max(10, Number(olt.pollingInterval) || 60)
+      const intervalSeconds = Math.max(10, Number(olt.pollingInterval) || 60);
       return window.setInterval(() => {
-        void pollOnuRef.current(olt, { silent: true })
-      }, intervalSeconds * 1000)
-    })
+        void pollOnuRef.current(olt, { silent: true });
+      }, intervalSeconds * 1000);
+    });
 
     return () => {
-      timers.forEach((timer) => window.clearInterval(timer))
-    }
-  }, [olts])
+      timers.forEach((timer) => window.clearInterval(timer));
+    };
+  }, [olts]);
 
   return (
     <main className="p-4 lg:p-6">
@@ -777,9 +921,9 @@ export function MonitoringWorkspace({ view }: { view: View }) {
           olt={deleteCandidate}
           onCancel={() => setDeleteCandidate(null)}
           onConfirm={() => {
-            const target = deleteCandidate
-            setDeleteCandidate(null)
-            void removeOlt(target.id)
+            const target = deleteCandidate;
+            setDeleteCandidate(null);
+            void removeOlt(target.id);
           }}
         />
       )}
@@ -788,35 +932,70 @@ export function MonitoringWorkspace({ view }: { view: View }) {
           mode={clearAlertsMode}
           savedCount={alerts.length}
           completedCount={alerts.filter((alert) => alert.acknowledged).length}
-          activeCount={operationalAlerts.filter((alert) => !alert.acknowledged).length}
+          activeCount={
+            operationalAlerts.filter((alert) => !alert.acknowledged).length
+          }
           onCancel={() => setClearAlertsMode(null)}
           onConfirm={() => {
-            const mode = clearAlertsMode
-            setClearAlertsMode(null)
-            void clearStoredAlerts(mode)
+            const mode = clearAlertsMode;
+            setClearAlertsMode(null);
+            void clearStoredAlerts(mode);
           }}
         />
       )}
 
       {activePollingIds.length > 0 && (
         <div className="mb-4 flex items-center gap-2 text-cyan-800 dark:text-cyan-200 bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-300 dark:border-cyan-800 px-4 py-2.5 rounded-2xl text-sm font-medium animate-pulse shadow-sm">
-          <RefreshCcw className="h-4 w-4 animate-spin text-cyan-600 dark:text-cyan-400 shrink-0" aria-hidden="true" />
+          <RefreshCcw
+            className="h-4 w-4 animate-spin text-cyan-600 dark:text-cyan-400 shrink-0"
+            aria-hidden="true"
+          />
           <span>
-            Polling SNMP sedang berlangsung untuk: <strong>{activelyPollingOltNames.join(", ") || "perangkat OLT"}</strong>
+            Polling SNMP sedang berlangsung untuk:{" "}
+            <strong>
+              {activelyPollingOltNames.join(", ") || "perangkat OLT"}
+            </strong>
           </span>
         </div>
       )}
 
       {(view === "dashboard" || view === "olts") && (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="OLT Online" value={`${onlineOlts}/${olts.length}`} detail="Berdasarkan test SNMP terakhir" tone="cyan" />
-          <MetricCard label="Total ONU" value={formatNumber(totalOnu)} detail="Akan terisi dari polling OLT" tone="emerald" />
-          <MetricCard label="ONU Down" value={String(downOnu)} detail="Tidak online saat polling terakhir" tone="amber" />
-          <MetricCard label="Alert Terbuka" value={String(openAlerts)} detail="Belum di-acknowledge" tone="red" />
+          <MetricCard
+            label="OLT Online"
+            value={`${onlineOlts}/${olts.length}`}
+            detail="Berdasarkan test SNMP terakhir"
+            tone="cyan"
+          />
+          <MetricCard
+            label="Total ONU"
+            value={formatNumber(totalOnu)}
+            detail="Akan terisi dari polling OLT"
+            tone="emerald"
+          />
+          <MetricCard
+            label="ONU Down"
+            value={String(downOnu)}
+            detail="Tidak online saat polling terakhir"
+            tone="amber"
+          />
+          <MetricCard
+            label="Alert Terbuka"
+            value={String(openAlerts)}
+            detail="Belum di-acknowledge"
+            tone="red"
+          />
         </div>
       )}
 
-      {view === "dashboard" && <DashboardView olts={olts} alerts={operationalAlerts} notice={notice} activePollingIds={activePollingIds} />}
+      {view === "dashboard" && (
+        <DashboardView
+          olts={olts}
+          alerts={operationalAlerts}
+          notice={notice}
+          activePollingIds={activePollingIds}
+        />
+      )}
 
       {view === "olts" && (
         <section className="mt-4 grid gap-4 xl:grid-cols-[420px_1fr]">
@@ -872,13 +1051,27 @@ export function MonitoringWorkspace({ view }: { view: View }) {
         />
       )}
       {view === "about" && <AboutView />}
-      {view === "settings" && <SettingsView telegram={settings.telegram} onTelegramChange={updateTelegramSettings} onTestTelegram={testTelegram} />}
-      {view === "system" && <SystemView onResetDefault={resetStorage} onToast={showToast} />}
+      {view === "settings" && (
+        <SettingsView
+          telegram={settings.telegram}
+          onTelegramChange={updateTelegramSettings}
+          onTestTelegram={testTelegram}
+        />
+      )}
+      {view === "system" && (
+        <SystemView onResetDefault={resetStorage} onToast={showToast} />
+      )}
     </main>
-  )
+  );
 }
 
-function ToastNotice({ toast, onClose }: { toast: NonNullable<ToastState>; onClose: () => void }) {
+function ToastNotice({
+  toast,
+  onClose,
+}: {
+  toast: NonNullable<ToastState>;
+  onClose: () => void;
+}) {
   const toneStyle = {
     info: {
       icon: Info,
@@ -898,8 +1091,8 @@ function ToastNotice({ toast, onClose }: { toast: NonNullable<ToastState>; onClo
       className: "border-red-200 bg-red-50 text-red-950",
       iconClassName: "bg-red-100 text-red-700",
     },
-  }[toast.tone]
-  const Icon = toneStyle.icon
+  }[toast.tone];
+  const Icon = toneStyle.icon;
 
   return (
     <div
@@ -908,7 +1101,9 @@ function ToastNotice({ toast, onClose }: { toast: NonNullable<ToastState>; onClo
       aria-live="polite"
     >
       <div className="flex items-start gap-3">
-        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${toneStyle.iconClassName}`}>
+        <span
+          className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${toneStyle.iconClassName}`}
+        >
           <Icon className="h-4 w-4" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
@@ -925,12 +1120,25 @@ function ToastNotice({ toast, onClose }: { toast: NonNullable<ToastState>; onClo
         </button>
       </div>
     </div>
-  )
+  );
 }
 
-function DeleteOltDialog({ olt, onCancel, onConfirm }: { olt: Olt; onCancel: () => void; onConfirm: () => void }) {
+function DeleteOltDialog({
+  olt,
+  onCancel,
+  onConfirm,
+}: {
+  olt: Olt;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-olt-title">
+    <div
+      className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-olt-title"
+    >
       <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-red-200 bg-white shadow-2xl shadow-slate-950/25 dark:border-red-500/30 dark:bg-slate-950">
         <div className="bg-gradient-to-br from-red-50 via-white to-orange-50 p-5 dark:from-red-950/35 dark:via-slate-950 dark:to-orange-950/25">
           <div className="flex items-start justify-between gap-4">
@@ -939,11 +1147,15 @@ function DeleteOltDialog({ olt, onCancel, onConfirm }: { olt: Olt; onCancel: () 
                 <Trash2 className="h-5 w-5" aria-hidden="true" />
               </span>
               <div>
-                <p id="delete-olt-title" className="text-base font-bold text-slate-950 dark:text-slate-50">
+                <p
+                  id="delete-olt-title"
+                  className="text-base font-bold text-slate-950 dark:text-slate-50"
+                >
                   Hapus OLT ini?
                 </p>
                 <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                  Tindakan ini akan menghapus OLT, data ONU/ONT, dan alert yang terhubung dari database lokal.
+                  Tindakan ini akan menghapus OLT, data ONU/ONT, dan alert yang
+                  terhubung dari database lokal.
                 </p>
               </div>
             </div>
@@ -958,16 +1170,24 @@ function DeleteOltDialog({ olt, onCancel, onConfirm }: { olt: Olt; onCancel: () 
           </div>
 
           <div className="mt-5 rounded-2xl border border-slate-200 bg-white/75 p-4 dark:border-slate-700 dark:bg-slate-900/70">
-            <p className="text-sm font-bold text-slate-950 dark:text-slate-50">{olt.name}</p>
+            <p className="text-sm font-bold text-slate-950 dark:text-slate-50">
+              {olt.name}
+            </p>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
               {olt.ipAddress}:{olt.snmpPort || 161} | {olt.vendor}
             </p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Jika ingin memakai OLT ini lagi, tambahkan ulang dari menu OLT.</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Jika ingin memakai OLT ini lagi, tambahkan ulang dari menu OLT.
+            </p>
           </div>
         </div>
 
         <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:justify-end">
-          <button className={secondaryButtonClass} type="button" onClick={onCancel}>
+          <button
+            className={secondaryButtonClass}
+            type="button"
+            onClick={onCancel}
+          >
             Batal
           </button>
           <button
@@ -981,7 +1201,7 @@ function DeleteOltDialog({ olt, onCancel, onConfirm }: { olt: Olt; onCancel: () 
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function ClearAlertsDialog({
@@ -992,18 +1212,23 @@ function ClearAlertsDialog({
   onCancel,
   onConfirm,
 }: {
-  mode: ClearAlertsMode
-  savedCount: number
-  completedCount: number
-  activeCount: number
-  onCancel: () => void
-  onConfirm: () => void
+  mode: ClearAlertsMode;
+  savedCount: number;
+  completedCount: number;
+  activeCount: number;
+  onCancel: () => void;
+  onConfirm: () => void;
 }) {
-  const isAll = mode === "all"
-  const count = isAll ? savedCount : completedCount
+  const isAll = mode === "all";
+  const count = isAll ? savedCount : completedCount;
 
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="clear-alerts-title">
+    <div
+      className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="clear-alerts-title"
+    >
       <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-amber-200 bg-white shadow-2xl shadow-slate-950/25 dark:border-amber-500/30 dark:bg-slate-950">
         <div className="bg-gradient-to-br from-amber-50 via-white to-red-50 p-5 dark:from-amber-950/35 dark:via-slate-950 dark:to-red-950/25">
           <div className="flex items-start justify-between gap-4">
@@ -1012,8 +1237,13 @@ function ClearAlertsDialog({
                 <CircleAlert className="h-5 w-5" aria-hidden="true" />
               </span>
               <div>
-                <p id="clear-alerts-title" className="text-base font-bold text-slate-950 dark:text-slate-50">
-                  {isAll ? "Bersihkan semua riwayat alert?" : "Bersihkan alert selesai?"}
+                <p
+                  id="clear-alerts-title"
+                  className="text-base font-bold text-slate-950 dark:text-slate-50"
+                >
+                  {isAll
+                    ? "Bersihkan semua riwayat alert?"
+                    : "Bersihkan alert selesai?"}
                 </p>
                 <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
                   {isAll
@@ -1034,21 +1264,34 @@ function ClearAlertsDialog({
 
           <div className="mt-5 grid gap-2 rounded-2xl border border-slate-200 bg-white/75 p-4 text-sm dark:border-slate-700 dark:bg-slate-900/70">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-slate-600 dark:text-slate-300">Riwayat yang akan dibersihkan</span>
-              <span className="font-bold text-slate-950 dark:text-slate-50">{count}</span>
+              <span className="text-slate-600 dark:text-slate-300">
+                Riwayat yang akan dibersihkan
+              </span>
+              <span className="font-bold text-slate-950 dark:text-slate-50">
+                {count}
+              </span>
             </div>
             <div className="flex items-center justify-between gap-3">
-              <span className="text-slate-600 dark:text-slate-300">Alert aktif di layar</span>
-              <span className="font-bold text-red-700 dark:text-red-200">{activeCount}</span>
+              <span className="text-slate-600 dark:text-slate-300">
+                Alert aktif di layar
+              </span>
+              <span className="font-bold text-red-700 dark:text-red-200">
+                {activeCount}
+              </span>
             </div>
             <p className="pt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              Alert aktif dari status perangkat tetap akan muncul jika OLT atau ONU/ONT masih down, RX lemah, atau suhu tinggi.
+              Alert aktif dari status perangkat tetap akan muncul jika OLT atau
+              ONU/ONT masih down, RX lemah, atau suhu tinggi.
             </p>
           </div>
         </div>
 
         <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:justify-end">
-          <button className={secondaryButtonClass} type="button" onClick={onCancel}>
+          <button
+            className={secondaryButtonClass}
+            type="button"
+            onClick={onCancel}
+          >
             Batal
           </button>
           <button
@@ -1063,10 +1306,20 @@ function ClearAlertsDialog({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-function DashboardView({ olts, alerts, notice, activePollingIds }: { olts: Olt[]; alerts: Alert[]; notice: string; activePollingIds: string[] }) {
+function DashboardView({
+  olts,
+  alerts,
+  notice,
+  activePollingIds,
+}: {
+  olts: Olt[];
+  alerts: Alert[];
+  notice: string;
+  activePollingIds: string[];
+}) {
   return (
     <section className="mt-4 grid gap-4 xl:grid-cols-[1fr_360px]">
       <div className={panelClass}>
@@ -1078,11 +1331,18 @@ function DashboardView({ olts, alerts, notice, activePollingIds }: { olts: Olt[]
         </div>
         <p className="mt-2 text-sm text-slate-600">{notice}</p>
         {olts.length === 0 ? (
-          <EmptyState title="Belum ada OLT" text="Masuk ke menu OLT untuk menambahkan perangkat." />
+          <EmptyState
+            title="Belum ada OLT"
+            text="Masuk ke menu OLT untuk menambahkan perangkat."
+          />
         ) : (
           <div className={tableShellClass}>
             {olts.map((olt) => (
-              <OltSummary key={olt.id} olt={olt} isPolling={activePollingIds.includes(olt.id)} />
+              <OltSummary
+                key={olt.id}
+                olt={olt}
+                isPolling={activePollingIds.includes(olt.id)}
+              />
             ))}
           </div>
         )}
@@ -1090,19 +1350,29 @@ function DashboardView({ olts, alerts, notice, activePollingIds }: { olts: Olt[]
 
       <div className={panelClass}>
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-950">Alert Terbaru</h2>
+          <h2 className="text-sm font-semibold text-slate-950">
+            Alert Terbaru
+          </h2>
           <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
             {alerts.length}
           </span>
         </div>
         {alerts.length === 0 ? (
-          <EmptyState title="Belum ada alert" text="Semua perangkat dalam kondisi aman berdasarkan data polling terakhir." />
+          <EmptyState
+            title="Belum ada alert"
+            text="Semua perangkat dalam kondisi aman berdasarkan data polling terakhir."
+          />
         ) : (
           <div className="mt-3 space-y-2">
             {alerts.slice(0, 5).map((alert) => (
-              <div key={alert.id} className="rounded-xl border border-slate-200 bg-white/70 p-3">
+              <div
+                key={alert.id}
+                className="rounded-xl border border-slate-200 bg-white/70 p-3"
+              >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-950">{alert.title}</p>
+                  <p className="text-sm font-medium text-slate-950">
+                    {alert.title}
+                  </p>
                   <StatusBadge value={alert.severity} />
                 </div>
                 <p className="mt-1 text-xs text-slate-500">{alert.detail}</p>
@@ -1112,61 +1382,62 @@ function DashboardView({ olts, alerts, notice, activePollingIds }: { olts: Olt[]
         )}
       </div>
     </section>
-  )
+  );
 }
 
 function oltAccent(olt: Olt) {
   if (olt.oidProfile === "hsgq-epon" || olt.vendor.includes("EPON")) {
     return {
-      card:
-        "border-emerald-300/60 bg-gradient-to-br from-emerald-50/85 via-white/75 to-teal-50/70 shadow-emerald-950/10 dark:from-emerald-950/45 dark:via-slate-900/70 dark:to-teal-950/45",
+      card: "border-emerald-300/60 bg-gradient-to-br from-emerald-50/85 via-white/75 to-teal-50/70 shadow-emerald-950/10 dark:from-emerald-950/45 dark:via-slate-900/70 dark:to-teal-950/45",
       selectedCard:
         "border-emerald-300 bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 shadow-emerald-900/15 dark:from-emerald-950/55 dark:via-teal-950/45 dark:to-cyan-950/35",
       icon: "bg-gradient-to-br from-emerald-400 to-teal-500 text-slate-950 shadow-emerald-500/25",
       strip: "from-emerald-400 via-teal-300 to-cyan-300",
       tile: "border-emerald-200/80 bg-emerald-50/55 dark:bg-emerald-950/25 dark:border-emerald-300/25",
       label: "text-emerald-700",
-    }
+    };
   }
 
   if (olt.oidProfile === "hsgq-gpon" || olt.vendor.includes("GPON")) {
     return {
-      card:
-        "border-cyan-300/60 bg-gradient-to-br from-cyan-50/85 via-white/75 to-sky-50/70 shadow-cyan-950/10 dark:from-cyan-950/45 dark:via-slate-900/70 dark:to-sky-950/45",
+      card: "border-cyan-300/60 bg-gradient-to-br from-cyan-50/85 via-white/75 to-sky-50/70 shadow-cyan-950/10 dark:from-cyan-950/45 dark:via-slate-900/70 dark:to-sky-950/45",
       selectedCard:
         "border-cyan-300 bg-gradient-to-br from-cyan-50 via-sky-50 to-blue-50 shadow-cyan-900/15 dark:from-cyan-950/55 dark:via-sky-950/45 dark:to-blue-950/35",
       icon: "bg-gradient-to-br from-cyan-400 to-sky-500 text-slate-950 shadow-cyan-500/25",
       strip: "from-cyan-400 via-sky-300 to-blue-300",
       tile: "border-cyan-200/80 bg-cyan-50/55 dark:bg-cyan-950/25 dark:border-cyan-300/25",
       label: "text-cyan-700",
-    }
+    };
   }
 
   return {
-    card:
-      "border-amber-300/60 bg-gradient-to-br from-amber-50/85 via-white/75 to-orange-50/70 shadow-amber-950/10 dark:from-amber-950/40 dark:via-slate-900/70 dark:to-orange-950/40",
+    card: "border-amber-300/60 bg-gradient-to-br from-amber-50/85 via-white/75 to-orange-50/70 shadow-amber-950/10 dark:from-amber-950/40 dark:via-slate-900/70 dark:to-orange-950/40",
     selectedCard:
       "border-amber-300 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 shadow-amber-900/15 dark:from-amber-950/50 dark:via-orange-950/40 dark:to-yellow-950/30",
     icon: "bg-gradient-to-br from-amber-300 to-orange-400 text-slate-950 shadow-amber-500/25",
     strip: "from-amber-300 via-orange-300 to-yellow-300",
     tile: "border-amber-200/80 bg-amber-50/55 dark:bg-amber-950/25 dark:border-amber-300/25",
     label: "text-amber-700",
-  }
+  };
 }
 
 function OltSummary({ olt, isPolling }: { olt: Olt; isPolling?: boolean }) {
-  const accent = oltAccent(olt)
+  const accent = oltAccent(olt);
 
   return (
     <div className="border-b border-slate-200 px-4 py-4 last:border-b-0">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl shadow-lg ${accent.icon}`}>
+          <span
+            className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl shadow-lg ${accent.icon}`}
+          >
             <Router className="h-4 w-4" aria-hidden="true" />
           </span>
           <div>
             <p className="text-sm font-semibold text-slate-950">{olt.name}</p>
-            <p className={`text-xs font-semibold ${accent.label}`}>{olt.vendor}</p>
+            <p className={`text-xs font-semibold ${accent.label}`}>
+              {olt.vendor}
+            </p>
             <p className="text-xs text-slate-500">
               {olt.ipAddress}:{olt.snmpPort}
             </p>
@@ -1175,7 +1446,10 @@ function OltSummary({ olt, isPolling }: { olt: Olt; isPolling?: boolean }) {
         <div className="flex items-center gap-2">
           {isPolling && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 animate-pulse">
-              <RefreshCcw className="h-3 w-3 animate-spin text-cyan-500" aria-hidden="true" />
+              <RefreshCcw
+                className="h-3 w-3 animate-spin text-cyan-500"
+                aria-hidden="true"
+              />
               Polling SNMP...
             </span>
           )}
@@ -1183,23 +1457,53 @@ function OltSummary({ olt, isPolling }: { olt: Olt; isPolling?: boolean }) {
         </div>
       </div>
       <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
-        <InfoTile label="Tipe Perangkat" value={displayDeviceType(olt)} tone={accent.tile} />
-        <InfoTile label="Lokasi" value={displayLocation(olt)} tone={accent.tile} />
-        <InfoTile label="ONU Online" value={String(olt.activeOnu)} tone={accent.tile} />
+        <InfoTile
+          label="Tipe Perangkat"
+          value={displayDeviceType(olt)}
+          tone={accent.tile}
+        />
+        <InfoTile
+          label="Lokasi"
+          value={displayLocation(olt)}
+          tone={accent.tile}
+        />
+        <InfoTile
+          label="ONU Online"
+          value={String(olt.activeOnu)}
+          tone={accent.tile}
+        />
       </dl>
     </div>
-  )
+  );
 }
 
-function OltHeaderInfo({ olt, accent, onSelect }: { olt: Olt; accent: ReturnType<typeof oltAccent>; onSelect: () => void }) {
+function OltHeaderInfo({
+  olt,
+  accent,
+  onSelect,
+}: {
+  olt: Olt;
+  accent: ReturnType<typeof oltAccent>;
+  onSelect: () => void;
+}) {
   return (
-    <button className="flex items-start gap-3 text-left" type="button" onClick={onSelect}>
-      <span className={`mt-0.5 grid h-12 w-12 shrink-0 place-items-center rounded-2xl shadow-lg ${accent.icon}`}>
+    <button
+      className="flex items-start gap-3 text-left"
+      type="button"
+      onClick={onSelect}
+    >
+      <span
+        className={`mt-0.5 grid h-12 w-12 shrink-0 place-items-center rounded-2xl shadow-lg ${accent.icon}`}
+      >
         <Router className="h-5 w-5" aria-hidden="true" />
       </span>
       <span>
-        <span className="block text-base font-bold text-slate-950">{olt.name}</span>
-        <span className={`block text-xs font-semibold ${accent.label}`}>{olt.vendor}</span>
+        <span className="block text-base font-bold text-slate-950">
+          {olt.name}
+        </span>
+        <span className={`block text-xs font-semibold ${accent.label}`}>
+          {olt.vendor}
+        </span>
         <span className="block text-xs text-slate-500">
           {olt.ipAddress}:{olt.snmpPort}
         </span>
@@ -1208,7 +1512,7 @@ function OltHeaderInfo({ olt, accent, onSelect }: { olt: Olt; accent: ReturnType
         </span>
       </span>
     </button>
-  )
+  );
 }
 
 function OltFormPanel({
@@ -1219,22 +1523,26 @@ function OltFormPanel({
   onUpdate,
   onVendorChange,
 }: {
-  form: OltForm
-  editingOltName?: string
-  onCancelEdit: () => void
-  onSave: () => void
-  onUpdate: <K extends keyof OltForm>(key: K, value: OltForm[K]) => void
-  onVendorChange: (vendor: Olt["vendor"]) => void
+  form: OltForm;
+  editingOltName?: string;
+  onCancelEdit: () => void;
+  onSave: () => void;
+  onUpdate: <K extends keyof OltForm>(key: K, value: OltForm[K]) => void;
+  onVendorChange: (vendor: Olt["vendor"]) => void;
 }) {
-  const isEditing = Boolean(editingOltName)
+  const isEditing = Boolean(editingOltName);
 
   return (
     <section className={panelClass}>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-sm font-semibold text-slate-950">{isEditing ? "Edit OLT" : "Tambah OLT"}</h1>
+          <h1 className="text-sm font-semibold text-slate-950">
+            {isEditing ? "Edit OLT" : "Tambah OLT"}
+          </h1>
           <p className="mt-1 text-xs text-slate-500">
-            {isEditing ? `Mengubah konfigurasi ${editingOltName}.` : "Masukkan akses SNMP untuk mulai monitoring."}
+            {isEditing
+              ? `Mengubah konfigurasi ${editingOltName}.`
+              : "Masukkan akses SNMP untuk mulai monitoring."}
           </p>
         </div>
         <span className="grid h-10 w-10 place-items-center rounded-xl bg-cyan-50 text-cyan-800">
@@ -1242,8 +1550,18 @@ function OltFormPanel({
         </span>
       </div>
       <div className="mt-4 grid gap-3">
-        <TextInput label="Nama OLT" value={form.name} onChange={(value) => onUpdate("name", value)} placeholder="OLT-AREA-01" />
-        <TextInput label="IP/Host" value={form.ipAddress} onChange={(value) => onUpdate("ipAddress", value)} placeholder="192.168.1.10" />
+        <TextInput
+          label="Nama OLT"
+          value={form.name}
+          onChange={(value) => onUpdate("name", value)}
+          placeholder="OLT-AREA-01"
+        />
+        <TextInput
+          label="IP/Host"
+          value={form.ipAddress}
+          onChange={(value) => onUpdate("ipAddress", value)}
+          placeholder="192.168.1.10"
+        />
         <div className="grid gap-3 sm:grid-cols-2">
           <SelectInput
             label="Vendor"
@@ -1265,13 +1583,25 @@ function OltFormPanel({
           <SelectInput
             label="Mode rename ONU"
             value={form.writeMode}
-            onChange={(value) => onUpdate("writeMode", value as Olt["writeMode"])}
+            onChange={(value) =>
+              onUpdate("writeMode", value as Olt["writeMode"])
+            }
             options={["none", "snmp", "cli", "api"]}
           />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <TextInput label="Port" value={form.snmpPort} onChange={(value) => onUpdate("snmpPort", value)} placeholder="161" />
-          <TextInput label="Community" value={form.readCommunity} onChange={(value) => onUpdate("readCommunity", value)} placeholder="public" />
+          <TextInput
+            label="Port"
+            value={form.snmpPort}
+            onChange={(value) => onUpdate("snmpPort", value)}
+            placeholder="161"
+          />
+          <TextInput
+            label="Community"
+            value={form.readCommunity}
+            onChange={(value) => onUpdate("readCommunity", value)}
+            placeholder="public"
+          />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <TextInput
@@ -1280,7 +1610,12 @@ function OltFormPanel({
             onChange={(value) => onUpdate("writeCommunity", value)}
             placeholder="private atau sama dengan community"
           />
-          <TextInput label="Polling (detik)" value={form.pollingInterval} onChange={(value) => onUpdate("pollingInterval", value)} placeholder="60 detik" />
+          <TextInput
+            label="Polling (detik)"
+            value={form.pollingInterval}
+            onChange={(value) => onUpdate("pollingInterval", value)}
+            placeholder="60 detik"
+          />
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <button
@@ -1288,18 +1623,26 @@ function OltFormPanel({
             type="button"
             onClick={onSave}
           >
-            {isEditing ? <Save className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+            {isEditing ? (
+              <Save className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Plus className="h-4 w-4" aria-hidden="true" />
+            )}
             {isEditing ? "Simpan Perubahan" : "Simpan OLT"}
           </button>
           {isEditing && (
-            <button className={secondaryButtonClass} type="button" onClick={onCancelEdit}>
+            <button
+              className={secondaryButtonClass}
+              type="button"
+              onClick={onCancelEdit}
+            >
               Batal Edit
             </button>
           )}
         </div>
       </div>
     </section>
-  )
+  );
 }
 
 function OltListPanel({
@@ -1314,16 +1657,16 @@ function OltListPanel({
   activePollingIds,
   onRemove,
 }: {
-  olts: Olt[]
-  selectedOltId?: string
-  notice: string
-  onSelect: (id: string) => void
-  onEdit: (olt: Olt) => void
-  onTest: (olt: Olt) => void
-  onTestWrite: (olt: Olt) => void
-  onPollOnu: (olt: Olt) => void
-  activePollingIds: string[]
-  onRemove: (olt: Olt) => void
+  olts: Olt[];
+  selectedOltId?: string;
+  notice: string;
+  onSelect: (id: string) => void;
+  onEdit: (olt: Olt) => void;
+  onTest: (olt: Olt) => void;
+  onTestWrite: (olt: Olt) => void;
+  onPollOnu: (olt: Olt) => void;
+  activePollingIds: string[];
+  onRemove: (olt: Olt) => void;
 }) {
   return (
     <section className={panelClass}>
@@ -1337,124 +1680,167 @@ function OltListPanel({
         </span>
       </div>
       {olts.length === 0 ? (
-        <EmptyState title="Database masih kosong" text="Tambahkan IP OLT asli di form sebelah kiri." />
+        <EmptyState
+          title="Database masih kosong"
+          text="Tambahkan IP OLT asli di form sebelah kiri."
+        />
       ) : (
         <div className="mt-4 space-y-3">
           {olts.map((olt) => {
-            const accent = oltAccent(olt)
-            const selected = selectedOltId === olt.id
-            const isPolling = activePollingIds.includes(olt.id)
+            const accent = oltAccent(olt);
+            const selected = selectedOltId === olt.id;
+            const isPolling = activePollingIds.includes(olt.id);
 
             return (
               <div
                 key={olt.id}
                 className={`relative grid overflow-hidden rounded-3xl border p-5 shadow-sm transition md:grid-cols-[1fr_auto] ${
-                  selected ? accent.selectedCard : `${accent.card} hover:-translate-y-0.5 hover:shadow-lg`
+                  selected
+                    ? accent.selectedCard
+                    : `${accent.card} hover:-translate-y-0.5 hover:shadow-lg`
                 }`}
               >
-                <span className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${accent.strip}`} />
-                <OltHeaderInfo olt={olt} accent={accent} onSelect={() => onSelect(olt.id)} />
-              <div className="flex items-center gap-2">
-                {isPolling && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 animate-pulse">
-                    <RefreshCcw className="h-3 w-3 animate-spin text-cyan-500" aria-hidden="true" />
-                    Polling SNMP...
-                  </span>
-                )}
-                <StatusBadge value={olt.status} />
-                <button
-                  className={secondaryButtonClass}
-                  type="button"
-                  onClick={() => onEdit(olt)}
-                >
-                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                  Edit
-                </button>
-                <button
-                  className={secondaryButtonClass}
-                  type="button"
-                  onClick={() => onTest(olt)}
-                >
-                  <Wifi className="h-3.5 w-3.5" aria-hidden="true" />
-                  Test
-                </button>
-                <button
-                  className={secondaryButtonClass}
-                  type="button"
-                  onClick={() => onTestWrite(olt)}
-                  disabled={!olt.writeCommunity?.trim() || olt.writeMode !== "snmp" || !supportsSnmpWriteTest(olt)}
-                  title={
-                    !supportsSnmpWriteTest(olt)
-                      ? "Vendor ini belum punya test write SNMP"
-                      : !olt.writeCommunity?.trim()
-                        ? "Isi Write Community untuk mengaktifkan test write"
-                        : "Test Write Community"
-                  }
-                >
-                  <Wifi className="h-3.5 w-3.5" aria-hidden="true" />
-                  Test Write
-                </button>
-                <button
-                  className={`${cyanButtonClass} ${isPolling ? "animate-pulse" : ""}`}
-                  type="button"
-                  disabled={isPolling}
-                  onClick={() => onPollOnu(olt)}
-                >
-                  <RefreshCcw className={`h-3.5 w-3.5 ${isPolling ? "animate-spin" : ""}`} aria-hidden="true" />
-                  {isPolling ? "Polling..." : "Poll ONU"}
-                </button>
-                <button
-                  className="inline-flex h-9 items-center rounded-xl border border-red-200 bg-white px-2.5 text-red-700 shadow-sm transition hover:bg-red-50"
-                  type="button"
-                  onClick={() => onRemove(olt)}
-                  aria-label={`Hapus ${olt.name}`}
-                >
-                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
+                <span
+                  className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${accent.strip}`}
+                />
+                <OltHeaderInfo
+                  olt={olt}
+                  accent={accent}
+                  onSelect={() => onSelect(olt.id)}
+                />
+                <div className="flex items-center gap-2">
+                  {isPolling && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 animate-pulse">
+                      <RefreshCcw
+                        className="h-3 w-3 animate-spin text-cyan-500"
+                        aria-hidden="true"
+                      />
+                      Polling SNMP...
+                    </span>
+                  )}
+                  <StatusBadge value={olt.status} />
+                  <button
+                    className={secondaryButtonClass}
+                    type="button"
+                    onClick={() => onEdit(olt)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                    Edit
+                  </button>
+                  <button
+                    className={secondaryButtonClass}
+                    type="button"
+                    onClick={() => onTest(olt)}
+                  >
+                    <Wifi className="h-3.5 w-3.5" aria-hidden="true" />
+                    Test
+                  </button>
+                  <button
+                    className={secondaryButtonClass}
+                    type="button"
+                    onClick={() => onTestWrite(olt)}
+                    disabled={
+                      !olt.writeCommunity?.trim() ||
+                      olt.writeMode !== "snmp" ||
+                      !supportsSnmpWriteTest(olt)
+                    }
+                    title={
+                      !supportsSnmpWriteTest(olt)
+                        ? "Vendor ini belum punya test write SNMP"
+                        : !olt.writeCommunity?.trim()
+                          ? "Isi Write Community untuk mengaktifkan test write"
+                          : "Test Write Community"
+                    }
+                  >
+                    <Wifi className="h-3.5 w-3.5" aria-hidden="true" />
+                    Test Write
+                  </button>
+                  <button
+                    className={`${cyanButtonClass} ${isPolling ? "animate-pulse" : ""}`}
+                    type="button"
+                    disabled={isPolling}
+                    onClick={() => onPollOnu(olt)}
+                  >
+                    <RefreshCcw
+                      className={`h-3.5 w-3.5 ${isPolling ? "animate-spin" : ""}`}
+                      aria-hidden="true"
+                    />
+                    {isPolling ? "Polling..." : "Poll ONU"}
+                  </button>
+                  <button
+                    className="inline-flex h-9 items-center rounded-xl border border-red-200 bg-white px-2.5 text-red-700 shadow-sm transition hover:bg-red-50"
+                    type="button"
+                    onClick={() => onRemove(olt)}
+                    aria-label={`Hapus ${olt.name}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+                <div className="grid gap-2 text-xs md:col-span-2 sm:grid-cols-2 xl:grid-cols-4">
+                  <InfoTile
+                    label="Nama perangkat"
+                    value={friendlySystemValue(olt, "name")}
+                    tone={accent.tile}
+                  />
+                  <InfoTile
+                    label="Tipe perangkat"
+                    value={displayDeviceType(olt)}
+                    tone={accent.tile}
+                  />
+                  <InfoTile
+                    label="Firmware"
+                    value={friendlySystemValue(olt, "firmware")}
+                    tone={accent.tile}
+                  />
+                  <InfoTile
+                    label="Lokasi"
+                    value={displayLocation(olt)}
+                    tone={accent.tile}
+                  />
+                </div>
               </div>
-              <div className="grid gap-2 text-xs md:col-span-2 sm:grid-cols-2 xl:grid-cols-4">
-                <InfoTile label="Nama perangkat" value={friendlySystemValue(olt, "name")} tone={accent.tile} />
-                <InfoTile label="Tipe perangkat" value={displayDeviceType(olt)} tone={accent.tile} />
-                <InfoTile label="Firmware" value={friendlySystemValue(olt, "firmware")} tone={accent.tile} />
-                <InfoTile label="Lokasi" value={displayLocation(olt)} tone={accent.tile} />
-              </div>
-            </div>
-            )
+            );
           })}
         </div>
       )}
     </section>
-  )
+  );
 }
 
 function OnuView(props: {
-  olts: Olt[]
-  onus: Onu[]
-  selectedOlt?: Olt
-  query: string
-  editingOnuId: string | null
-  draftName: string
-  onSelectOlt: (id: string) => void
-  onQuery: (value: string) => void
-  onDraftName: (value: string) => void
-  onStartRename: (onu: Onu) => void
-  onSaveRename: (onu: Onu) => void
-  onPollOnu: (olt: Olt) => void
-  activePollingIds: string[]
-  onSyncCustomers: () => void
-  syncingCustomers: boolean
+  olts: Olt[];
+  onus: Onu[];
+  selectedOlt?: Olt;
+  query: string;
+  editingOnuId: string | null;
+  draftName: string;
+  onSelectOlt: (id: string) => void;
+  onQuery: (value: string) => void;
+  onDraftName: (value: string) => void;
+  onStartRename: (onu: Onu) => void;
+  onSaveRename: (onu: Onu) => void;
+  onPollOnu: (olt: Olt) => void;
+  activePollingIds: string[];
+  onSyncCustomers: () => void;
+  syncingCustomers: boolean;
 }) {
   const renameEnabled =
-    Boolean(props.selectedOlt?.writeCommunity?.trim()) && props.selectedOlt?.writeMode === "snmp" && supportsSnmpRename(props.selectedOlt)
+    Boolean(props.selectedOlt?.writeCommunity?.trim()) &&
+    props.selectedOlt?.writeMode === "snmp" &&
+    supportsSnmpRename(props.selectedOlt);
   const renameDisabledText =
     props.selectedOlt?.oidProfile === "hsgq-epon"
       ? "EPON belum support"
       : props.selectedOlt?.oidProfile === "vsol-gpon"
         ? "VSOL dilewati"
-      : "Rename nonaktif"
-  const polling = Boolean(props.selectedOlt && props.activePollingIds.includes(props.selectedOlt.id))
-  const linkedCount = props.onus.filter((o) => Boolean(o.customerLink)).length
-  const billingLinkedCount = props.onus.filter((o) => Boolean(o.customerLink?.idPelanggan)).length
+        : "Rename nonaktif";
+  const polling = Boolean(
+    props.selectedOlt && props.activePollingIds.includes(props.selectedOlt.id),
+  );
+  const linkedCount = props.onus.filter((o) => Boolean(o.customerLink)).length;
+  const billingLinkedCount = props.onus.filter((o) =>
+    Boolean(o.customerLink?.idPelanggan),
+  ).length;
 
   return (
     <section className={panelClass}>
@@ -1465,7 +1851,8 @@ function OnuView(props: {
             Data RX, suhu, dan kasus down dibaca dari OID OLT.{" "}
             {props.onus.length > 0 && (
               <span className="font-medium text-cyan-800">
-                ({linkedCount}/{props.onus.length} terhubung PPPoE • {billingLinkedCount} pelanggan billing)
+                ({linkedCount}/{props.onus.length} terhubung PPPoE •{" "}
+                {billingLinkedCount} pelanggan billing)
               </span>
             )}
           </p>
@@ -1487,9 +1874,14 @@ function OnuView(props: {
             className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 text-sm font-semibold text-cyan-800 shadow-sm transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50 ${polling ? "animate-pulse" : ""}`}
             type="button"
             disabled={!props.selectedOlt || polling}
-            onClick={() => props.selectedOlt && props.onPollOnu(props.selectedOlt)}
+            onClick={() =>
+              props.selectedOlt && props.onPollOnu(props.selectedOlt)
+            }
           >
-            <RefreshCcw className={`h-4 w-4 ${polling ? "animate-spin" : ""}`} aria-hidden="true" />
+            <RefreshCcw
+              className={`h-4 w-4 ${polling ? "animate-spin" : ""}`}
+              aria-hidden="true"
+            />
             {polling ? "Polling..." : "Poll ONU"}
           </button>
           <button
@@ -1498,11 +1890,19 @@ function OnuView(props: {
             disabled={props.syncingCustomers}
             onClick={props.onSyncCustomers}
           >
-            <Router className={`h-4 w-4 ${props.syncingCustomers ? "animate-spin" : ""}`} aria-hidden="true" />
-            {props.syncingCustomers ? "Syncing Mikrotik..." : "Sync Mikrotik & Customer"}
+            <Router
+              className={`h-4 w-4 ${props.syncingCustomers ? "animate-spin" : ""}`}
+              aria-hidden="true"
+            />
+            {props.syncingCustomers
+              ? "Syncing Mikrotik..."
+              : "Sync Mikrotik & Customer"}
           </button>
           <label className="relative block sm:w-72">
-            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" aria-hidden="true" />
+            <Search
+              className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400"
+              aria-hidden="true"
+            />
             <input
               className="h-10 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
               placeholder="Cari nama, pelanggan, PPPoE, serial, PON"
@@ -1514,7 +1914,10 @@ function OnuView(props: {
       </div>
 
       {props.onus.length === 0 ? (
-        <EmptyState title="Belum ada data ONU/ONT" text="Setelah polling SNMP dibuat, daftar ONU dari OLT akan muncul di sini." />
+        <EmptyState
+          title="Belum ada data ONU/ONT"
+          text="Setelah polling SNMP dibuat, daftar ONU dari OLT akan muncul di sini."
+        />
       ) : (
         <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white/60">
           <table className="w-full min-w-[1150px] text-left text-sm">
@@ -1535,7 +1938,7 @@ function OnuView(props: {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {props.onus.map((onu) => {
-                const link = onu.customerLink
+                const link = onu.customerLink;
                 const offsetLabel =
                   link?.macOffset === 0
                     ? "Exact"
@@ -1543,26 +1946,35 @@ function OnuView(props: {
                       ? `+${link.macOffset}`
                       : link
                         ? String(link.macOffset)
-                        : ""
+                        : "";
 
                 return (
-                  <tr key={onu.id} className="bg-white/70 transition hover:bg-cyan-50/50">
+                  <tr
+                    key={onu.id}
+                    className="bg-white/70 transition hover:bg-cyan-50/50"
+                  >
                     <td className="px-4 py-3">
                       {props.editingOnuId === onu.id ? (
                         <input
                           className="h-9 w-full rounded-xl border border-slate-300 px-2 text-sm outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
                           value={props.draftName}
-                          onChange={(event) => props.onDraftName(event.target.value)}
+                          onChange={(event) =>
+                            props.onDraftName(event.target.value)
+                          }
                         />
                       ) : (
-                        <span className="font-medium text-slate-950">{onu.name}</span>
+                        <span className="font-medium text-slate-950">
+                          {onu.name}
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       {link?.namaPelanggan ? (
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-slate-900">{link.namaPelanggan}</span>
+                            <span className="font-semibold">
+                              {link.namaPelanggan}
+                            </span>
                             {link.statusLangganan && (
                               <span
                                 className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${
@@ -1577,16 +1989,23 @@ function OnuView(props: {
                           </div>
                           <p className="text-xs text-slate-500">
                             ID: {link.idPelanggan || "-"}
-                            {link.namaLangganan ? ` • ${link.namaLangganan}` : ""}
+                            {link.namaLangganan
+                              ? ` • ${link.namaLangganan}`
+                              : ""}
                           </p>
                           {link.alamat && (
-                            <p className="max-w-[240px] truncate text-[11px] text-slate-400" title={link.alamat}>
+                            <p
+                              className="max-w-[240px] truncate text-[11px] text-slate-400"
+                              title={link.alamat}
+                            >
                               {link.alamat}
                             </p>
                           )}
                         </div>
                       ) : link ? (
-                        <span className="text-xs italic text-slate-400">PPPoE tanpa data billing</span>
+                        <span className="text-xs italic text-slate-400">
+                          PPPoE tanpa data billing
+                        </span>
                       ) : (
                         <span className="text-xs text-slate-400">-</span>
                       )}
@@ -1595,8 +2014,10 @@ function OnuView(props: {
                       {link ? (
                         <div className="space-y-0.5">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="font-mono text-xs font-semibold text-cyan-900">{link.ipSecret}</span>
-                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
+                            <span className="font-mono text-xs font-semibold ">
+                              {link.ipSecret}
+                            </span>
+                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold">
                               {link.routerName}
                             </span>
                           </div>
@@ -1609,7 +2030,9 @@ function OnuView(props: {
                                   : "bg-slate-100 text-slate-600"
                               }`}
                             >
-                              {link.macSource === "active" ? "active" : "last-caller"}
+                              {link.macSource === "active"
+                                ? "active"
+                                : "last-caller"}
                             </span>
                             <span className="inline-flex items-center rounded bg-cyan-50 px-1 py-0.2 font-mono text-[10px] font-semibold text-cyan-800">
                               MAC {offsetLabel}
@@ -1620,17 +2043,27 @@ function OnuView(props: {
                         <span className="text-xs text-slate-400">-</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-600">{onu.serialNumber}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-600">
+                      {onu.serialNumber}
+                    </td>
                     <td className="px-4 py-3 text-slate-600">
                       {onu.ponPort}:{onu.onuIndex}
                     </td>
                     <td className="px-4 py-3">
-                      <SignalBadge value={formatRxPower(onu.rxPower)} tone={rxTone(onu.rxPower)} />
+                      <SignalBadge
+                        value={formatRxPower(onu.rxPower)}
+                        tone={rxTone(onu.rxPower)}
+                      />
                     </td>
                     <td className="px-4 py-3">
-                      <SignalBadge value={formatTemperature(onu.temperatureC)} tone={temperatureTone(onu.temperatureC)} />
+                      <SignalBadge
+                        value={formatTemperature(onu.temperatureC)}
+                        tone={temperatureTone(onu.temperatureC)}
+                      />
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{onu.status === "online" ? "-" : onu.downReason || "Down"}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {onu.status === "online" ? "-" : onu.downReason || "Down"}
+                    </td>
                     <td className="px-4 py-3">
                       <StatusBadge value={onu.status} />
                     </td>
@@ -1663,14 +2096,14 @@ function OnuView(props: {
                       )}
                     </td>
                   </tr>
-                )
+                );
               })}
             </tbody>
           </table>
         </div>
       )}
     </section>
-  )
+  );
 }
 
 function AlertsView({
@@ -1679,20 +2112,24 @@ function AlertsView({
   onClearAcknowledged,
   onClearAll,
 }: {
-  alerts: Alert[]
-  savedAlerts: Alert[]
-  onClearAcknowledged: () => void
-  onClearAll: () => void
+  alerts: Alert[];
+  savedAlerts: Alert[];
+  onClearAcknowledged: () => void;
+  onClearAll: () => void;
 }) {
-  const openCount = alerts.filter((alert) => !alert.acknowledged).length
-  const completedSavedCount = savedAlerts.filter((alert) => alert.acknowledged).length
+  const openCount = alerts.filter((alert) => !alert.acknowledged).length;
+  const completedSavedCount = savedAlerts.filter(
+    (alert) => alert.acknowledged,
+  ).length;
 
   return (
     <section className={panelClass}>
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <h1 className="text-sm font-semibold text-slate-950">Alert Aktif</h1>
-          <p className="text-sm text-slate-500">Gangguan dibuat otomatis dari status OLT dan ONU/ONT terakhir.</p>
+          <p className="text-sm text-slate-500">
+            Gangguan dibuat otomatis dari status OLT dan ONU/ONT terakhir.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-700">
@@ -1703,7 +2140,11 @@ function AlertsView({
             type="button"
             onClick={onClearAcknowledged}
             disabled={completedSavedCount === 0}
-            title={completedSavedCount === 0 ? "Belum ada alert selesai yang tersimpan" : "Hapus alert yang sudah selesai"}
+            title={
+              completedSavedCount === 0
+                ? "Belum ada alert selesai yang tersimpan"
+                : "Hapus alert yang sudah selesai"
+            }
           >
             <CircleCheck className="h-3.5 w-3.5" aria-hidden="true" />
             Bersihkan Selesai
@@ -1713,7 +2154,11 @@ function AlertsView({
             type="button"
             onClick={onClearAll}
             disabled={savedAlerts.length === 0}
-            title={savedAlerts.length === 0 ? "Belum ada riwayat alert yang tersimpan" : "Hapus semua riwayat alert tersimpan"}
+            title={
+              savedAlerts.length === 0
+                ? "Belum ada riwayat alert yang tersimpan"
+                : "Hapus semua riwayat alert tersimpan"
+            }
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             Bersihkan Semua
@@ -1722,11 +2167,16 @@ function AlertsView({
       </div>
       {savedAlerts.length > 0 && (
         <div className="mt-3 rounded-2xl border border-cyan-200 bg-cyan-50/70 px-4 py-3 text-xs leading-5 text-cyan-900 dark:border-cyan-400/20 dark:bg-cyan-950/25 dark:text-cyan-100">
-          Riwayat tersimpan: {savedAlerts.length}. Alert selesai: {completedSavedCount}. Alert aktif dari status perangkat tetap muncul sampai kondisi perangkat normal.
+          Riwayat tersimpan: {savedAlerts.length}. Alert selesai:{" "}
+          {completedSavedCount}. Alert aktif dari status perangkat tetap muncul
+          sampai kondisi perangkat normal.
         </div>
       )}
       {alerts.length === 0 ? (
-        <EmptyState title="Belum ada alert" text="Semua perangkat dalam kondisi aman berdasarkan data polling terakhir." />
+        <EmptyState
+          title="Belum ada alert"
+          text="Semua perangkat dalam kondisi aman berdasarkan data polling terakhir."
+        />
       ) : (
         <div className="mt-4 grid gap-3">
           {alerts.map((alert) => (
@@ -1737,7 +2187,9 @@ function AlertsView({
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <StatusBadge value={alert.severity} />
-                  <p className="text-sm font-semibold text-slate-950">{alert.title}</p>
+                  <p className="text-sm font-semibold text-slate-950">
+                    {alert.title}
+                  </p>
                 </div>
                 <p className="mt-1 text-sm text-slate-600">{alert.detail}</p>
                 <p className="mt-2 text-xs text-slate-400">{alert.createdAt}</p>
@@ -1750,7 +2202,7 @@ function AlertsView({
         </div>
       )}
     </section>
-  )
+  );
 }
 
 function AboutView() {
@@ -1761,7 +2213,7 @@ function AboutView() {
     "Notifikasi Telegram",
     "Role Admin dan Super Admin",
     "Chat Bot Telegram",
-  ]
+  ];
 
   return (
     <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
@@ -1771,12 +2223,19 @@ function AboutView() {
             <span className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-800">
               About Mikroin Monitor
             </span>
-            <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950">Monitoring OLT dan ONU/ONT yang ringan untuk operasional jaringan.</h1>
+            <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950">
+              Monitoring OLT dan ONU/ONT yang ringan untuk operasional jaringan.
+            </h1>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-600">
-              Mikroin Monitor adalah aplikasi monitoring OLT dan ONU/ONT berbasis SNMP untuk membantu teknisi memantau jaringan fiber secara cepat,
-              rapi, dan terpusat. Aplikasi ini menampilkan status OLT, daftar pelanggan ONU/ONT, power RX, suhu perangkat, alert gangguan, serta
-              notifikasi Telegram ketika terjadi perubahan status seperti ONT down, recovery, atau OLT tidak dapat dihubungi. Mikroin Monitor juga
-              dilengkapi chat bot Telegram untuk membantu pengecekan data pelanggan, ONT down, status OLT, dan ringkasan jaringan langsung dari chat.
+              Mikroin Monitor adalah aplikasi monitoring OLT dan ONU/ONT
+              berbasis SNMP untuk membantu teknisi memantau jaringan fiber
+              secara cepat, rapi, dan terpusat. Aplikasi ini menampilkan status
+              OLT, daftar pelanggan ONU/ONT, power RX, suhu perangkat, alert
+              gangguan, serta notifikasi Telegram ketika terjadi perubahan
+              status seperti ONT down, recovery, atau OLT tidak dapat dihubungi.
+              Mikroin Monitor juga dilengkapi chat bot Telegram untuk membantu
+              pengecekan data pelanggan, ONT down, status OLT, dan ringkasan
+              jaringan langsung dari chat.
             </p>
           </div>
           <span className="grid h-14 w-14 shrink-0 place-items-center rounded-3xl bg-gradient-to-br from-cyan-400 to-emerald-400 text-slate-950 shadow-lg shadow-cyan-500/20">
@@ -1786,7 +2245,10 @@ function AboutView() {
 
         <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {features.map((feature) => (
-            <div key={feature} className="rounded-2xl border border-cyan-200 bg-cyan-50/60 p-4 text-sm font-bold text-cyan-900 shadow-sm dark:bg-cyan-950/20 dark:text-cyan-50">
+            <div
+              key={feature}
+              className="rounded-2xl border border-cyan-200 bg-cyan-50/60 p-4 text-sm font-bold text-cyan-900 shadow-sm dark:bg-cyan-950/20 dark:text-cyan-50"
+            >
               {feature}
             </div>
           ))}
@@ -1800,7 +2262,9 @@ function AboutView() {
               </span>
               <div>
                 <p className="text-sm font-bold text-slate-950">WhatsApp</p>
-                <p className="text-sm font-semibold text-slate-600">085353368296</p>
+                <p className="text-sm font-semibold text-slate-600">
+                  085353368296
+                </p>
               </div>
             </div>
           </div>
@@ -1811,7 +2275,9 @@ function AboutView() {
               </span>
               <div>
                 <p className="text-sm font-bold text-slate-950">Email</p>
-                <p className="break-all text-sm font-semibold text-slate-600">radius.mikroin@gmail.com</p>
+                <p className="break-all text-sm font-semibold text-slate-600">
+                  radius.mikroin@gmail.com
+                </p>
               </div>
             </div>
           </div>
@@ -1825,22 +2291,35 @@ function AboutView() {
               <HeartHandshake className="h-5 w-5" aria-hidden="true" />
             </span>
             <div>
-              <p className="text-sm font-bold text-emerald-900 dark:text-emerald-50">Dukungan Pengembangan</p>
-              <p className="text-xs text-emerald-700 dark:text-emerald-200">Bantu pengembangan fitur Mikroin Monitor.</p>
+              <p className="text-sm font-bold text-emerald-900 dark:text-emerald-50">
+                Dukungan Pengembangan
+              </p>
+              <p className="text-xs text-emerald-700 dark:text-emerald-200">
+                Bantu pengembangan fitur Mikroin Monitor.
+              </p>
             </div>
           </div>
           <p className="mt-4 text-sm leading-6 text-emerald-900 dark:text-emerald-50">
-            Jika aplikasi ini membantu operasional jaringan Anda, dukungan donasi sangat berarti untuk pengembangan, perawatan, dan penambahan fitur.
-            Untuk permintaan hak akses Super Admin atau dukungan lanjutan, silakan hubungi pengembang melalui WhatsApp atau email.
+            Jika aplikasi ini membantu operasional jaringan Anda, dukungan
+            donasi sangat berarti untuk pengembangan, perawatan, dan penambahan
+            fitur. Untuk permintaan hak akses Super Admin atau dukungan
+            lanjutan, silakan hubungi pengembang melalui WhatsApp atau email.
           </p>
         </div>
 
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-          <Image className="h-auto w-full rounded-2xl" src="/QRIS.svg" alt="QRIS donasi Mikroin Monitor" width={720} height={1120} priority={false} />
+          <Image
+            className="h-auto w-full rounded-2xl"
+            src="/QRIS.svg"
+            alt="QRIS donasi Mikroin Monitor"
+            width={720}
+            height={1120}
+            priority={false}
+          />
         </div>
       </aside>
     </section>
-  )
+  );
 }
 
 function SettingsView({
@@ -1848,12 +2327,15 @@ function SettingsView({
   onTelegramChange,
   onTestTelegram,
 }: {
-  telegram: TelegramSettings
-  onTelegramChange: (settings: TelegramSettings) => void
-  onTestTelegram: (settings: TelegramSettings) => void
+  telegram: TelegramSettings;
+  onTelegramChange: (settings: TelegramSettings) => void;
+  onTestTelegram: (settings: TelegramSettings) => void;
 }) {
-  function updateTelegram<K extends keyof TelegramSettings>(key: K, value: TelegramSettings[K]) {
-    onTelegramChange({ ...telegram, [key]: value })
+  function updateTelegram<K extends keyof TelegramSettings>(
+    key: K,
+    value: TelegramSettings[K],
+  ) {
+    onTelegramChange({ ...telegram, [key]: value });
   }
 
   return (
@@ -1863,24 +2345,35 @@ function SettingsView({
         <div className="rounded-2xl border border-slate-200 bg-white/60 p-4">
           <p className="text-sm font-medium text-slate-950">Collector</p>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            Collector membaca status OLT dan ONU/ONT secara berkala, lalu membuat alert otomatis saat terdeteksi gangguan atau perubahan status.
+            Collector membaca status OLT dan ONU/ONT secara berkala, lalu
+            membuat alert otomatis saat terdeteksi gangguan atau perubahan
+            status.
           </p>
           <div className="mt-3 flex items-center gap-2 text-sm text-slate-600">
             <RefreshCcw className="h-4 w-4" aria-hidden="true" />
             OLT yang sudah berjalan: HSGQ GPON, HSGQ EPON, dan VSOL.
           </div>
           <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-sm leading-6 text-amber-900 dark:border-amber-400/20 dark:bg-amber-950/25 dark:text-amber-100">
-            Dukungan untuk merk dan tipe OLT lainnya masih menunggu sampel perangkat. Jika Anda memiliki OLT yang belum terdaftar di aplikasi ini,
-            silakan hubungi pengembang agar profil OID dapat dipelajari dan ditambahkan.
+            Dukungan untuk merk dan tipe OLT lainnya masih menunggu sampel
+            perangkat. Jika Anda memiliki OLT yang belum terdaftar di aplikasi
+            ini, silakan hubungi pengembang agar profil OID dapat dipelajari dan
+            ditambahkan.
           </p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white/60 p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <p className="text-sm font-medium text-slate-950">Telegram Bot</p>
-              <p className="mt-1 text-sm text-slate-500">Notifikasi ONT down dan command chat seperti /cek, /down, /olt, /summary, /menu.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Notifikasi ONT down dan command chat seperti /cek, /down, /olt,
+                /summary, /menu.
+              </p>
             </div>
-            <button className={cyanButtonClass} type="button" onClick={() => onTestTelegram(telegram)}>
+            <button
+              className={cyanButtonClass}
+              type="button"
+              onClick={() => onTestTelegram(telegram)}
+            >
               Test Telegram
             </button>
           </div>
@@ -1900,96 +2393,138 @@ function SettingsView({
             />
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <ToggleInput label="Aktifkan Telegram" checked={telegram.enabled} onChange={(value) => updateTelegram("enabled", value)} />
-            <ToggleInput label="Aktifkan chat bot polling" checked={telegram.botPollingEnabled} onChange={(value) => updateTelegram("botPollingEnabled", value)} />
-            <ToggleInput label="Notifikasi ONT down" checked={telegram.notifyOntDown} onChange={(value) => updateTelegram("notifyOntDown", value)} />
-            <ToggleInput label="Notifikasi ONT recovery" checked={telegram.notifyRecovery} onChange={(value) => updateTelegram("notifyRecovery", value)} />
+            <ToggleInput
+              label="Aktifkan Telegram"
+              checked={telegram.enabled}
+              onChange={(value) => updateTelegram("enabled", value)}
+            />
+            <ToggleInput
+              label="Aktifkan chat bot polling"
+              checked={telegram.botPollingEnabled}
+              onChange={(value) => updateTelegram("botPollingEnabled", value)}
+            />
+            <ToggleInput
+              label="Notifikasi ONT down"
+              checked={telegram.notifyOntDown}
+              onChange={(value) => updateTelegram("notifyOntDown", value)}
+            />
+            <ToggleInput
+              label="Notifikasi ONT recovery"
+              checked={telegram.notifyRecovery}
+              onChange={(value) => updateTelegram("notifyRecovery", value)}
+            />
           </div>
           <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-sm text-slate-600">
             <p className="font-semibold text-slate-950">Perintah bot</p>
-            <p className="mt-1">/menu, /cek nama pelanggan, /down, /olt, /summary</p>
+            <p className="mt-1">
+              /menu, /cek nama pelanggan, /down, /olt, /summary
+            </p>
           </div>
         </div>
       </div>
     </section>
-  )
+  );
 }
 
-function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; onToast: (message: string, tone?: ToastTone) => void }) {
-  const [users, setUsers] = useState<PublicUser[]>([])
-  const [auditLogs, setAuditLogs] = useState<AuthAuditLog[]>([])
-  const [editingUserId, setEditingUserId] = useState<string | null>(null)
-  const [systemMessage, setSystemMessage] = useState("")
-  const [startupStatus, setStartupStatus] = useState<StartupStatus>({ enabled: false })
+function SystemView({
+  onResetDefault,
+  onToast,
+}: {
+  onResetDefault: () => void;
+  onToast: (message: string, tone?: ToastTone) => void;
+}) {
+  const [users, setUsers] = useState<PublicUser[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuthAuditLog[]>([]);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [systemMessage, setSystemMessage] = useState("");
+  const [startupStatus, setStartupStatus] = useState<StartupStatus>({
+    enabled: false,
+  });
   const [userForm, setUserForm] = useState({
     username: "",
     name: "",
     password: "",
     role: "admin" as AppRole,
-  })
+  });
 
   useEffect(() => {
-    let cancelled = false
+    let cancelled = false;
 
     fetch("/api/auth/users")
-      .then((response) => response.json() as Promise<{ users: PublicUser[]; auditLogs: AuthAuditLog[] }>)
+      .then(
+        (response) =>
+          response.json() as Promise<{
+            users: PublicUser[];
+            auditLogs: AuthAuditLog[];
+          }>,
+      )
       .then((result) => {
-        if (cancelled) return
-        setUsers(result.users)
-        setAuditLogs(result.auditLogs)
+        if (cancelled) return;
+        setUsers(result.users);
+        setAuditLogs(result.auditLogs);
       })
       .catch(() => {
-        if (cancelled) return
-        setUsers([])
-        setAuditLogs([])
-        setSystemMessage("Data user belum bisa dibaca.")
-      })
+        if (cancelled) return;
+        setUsers([]);
+        setAuditLogs([]);
+        setSystemMessage("Data user belum bisa dibaca.");
+      });
 
     fetch("/api/system/startup")
       .then((response) => response.json() as Promise<StartupStatus>)
       .then((result) => {
-        if (!cancelled) setStartupStatus(result)
+        if (!cancelled) setStartupStatus(result);
       })
       .catch(() => {
-        if (!cancelled) setStartupStatus({ enabled: false, message: "Status startup belum bisa dibaca." })
-      })
+        if (!cancelled)
+          setStartupStatus({
+            enabled: false,
+            message: "Status startup belum bisa dibaca.",
+          });
+      });
 
     return () => {
-      cancelled = true
-    }
-  }, [])
+      cancelled = true;
+    };
+  }, []);
 
   function currentActor() {
     try {
-      const raw = window.localStorage.getItem(authStorageKey)
-      if (!raw) return "unknown"
-      const session = JSON.parse(raw) as AuthSession
-      return session.username
+      const raw = window.localStorage.getItem(authStorageKey);
+      if (!raw) return "unknown";
+      const session = JSON.parse(raw) as AuthSession;
+      return session.username;
     } catch {
-      return "unknown"
+      return "unknown";
     }
   }
 
-  function updateSystemData(result: { users?: PublicUser[]; auditLogs?: AuthAuditLog[]; message?: string }) {
-    if (result.users) setUsers(result.users)
-    if (result.auditLogs) setAuditLogs(result.auditLogs)
-    if (result.message) setSystemMessage(result.message)
+  function updateSystemData(result: {
+    users?: PublicUser[];
+    auditLogs?: AuthAuditLog[];
+    message?: string;
+  }) {
+    if (result.users) setUsers(result.users);
+    if (result.auditLogs) setAuditLogs(result.auditLogs);
+    if (result.message) setSystemMessage(result.message);
   }
 
   function clearUserForm() {
-    setEditingUserId(null)
-    setUserForm({ username: "", name: "", password: "", role: "admin" })
+    setEditingUserId(null);
+    setUserForm({ username: "", name: "", password: "", role: "admin" });
   }
 
   function editUser(user: PublicUser) {
-    setEditingUserId(user.id)
+    setEditingUserId(user.id);
     setUserForm({
       username: user.username,
       name: user.name,
       password: "",
       role: user.role,
-    })
-    setSystemMessage(`Mode edit aktif untuk ${user.username}. Isi password baru jika ingin mengganti password.`)
+    });
+    setSystemMessage(
+      `Mode edit aktif untuk ${user.username}. Isi password baru jika ingin mengganti password.`,
+    );
   }
 
   async function saveUser() {
@@ -1997,53 +2532,74 @@ function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; o
       ...userForm,
       id: editingUserId ?? "",
       actor: currentActor(),
-    }
+    };
     const response = await fetch("/api/auth/users", {
       method: editingUserId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    })
-    const result = (await response.json()) as { ok: boolean; message: string; users?: PublicUser[]; auditLogs?: AuthAuditLog[] }
+    });
+    const result = (await response.json()) as {
+      ok: boolean;
+      message: string;
+      users?: PublicUser[];
+      auditLogs?: AuthAuditLog[];
+    };
 
-    updateSystemData(result)
-    if (result.ok) clearUserForm()
+    updateSystemData(result);
+    if (result.ok) clearUserForm();
   }
 
   async function removeUser(user: PublicUser) {
-    const approved = window.confirm(`Hapus user ${user.username}?`)
-    if (!approved) return
+    const approved = window.confirm(`Hapus user ${user.username}?`);
+    if (!approved) return;
 
     const response = await fetch("/api/auth/users", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: user.id, actor: currentActor() }),
-    })
-    const result = (await response.json()) as { ok: boolean; message: string; users?: PublicUser[]; auditLogs?: AuthAuditLog[] }
+    });
+    const result = (await response.json()) as {
+      ok: boolean;
+      message: string;
+      users?: PublicUser[];
+      auditLogs?: AuthAuditLog[];
+    };
 
-    updateSystemData(result)
-    if (result.ok && editingUserId === user.id) clearUserForm()
+    updateSystemData(result);
+    if (result.ok && editingUserId === user.id) clearUserForm();
   }
 
   function resetDefault() {
-    const approved = window.confirm("Reset Default akan mengosongkan data OLT, ONU/ONT, alert, dan setting Telegram. Akun login tetap tersedia. Lanjutkan?")
-    if (approved) onResetDefault()
+    const approved = window.confirm(
+      "Reset Default akan mengosongkan data OLT, ONU/ONT, alert, dan setting Telegram. Akun login tetap tersedia. Lanjutkan?",
+    );
+    if (approved) onResetDefault();
   }
 
   async function toggleStartup() {
-    const nextMethod = startupStatus.enabled ? "DELETE" : "POST"
-    const loadingMessage = startupStatus.enabled ? "Menonaktifkan startup otomatis..." : "Mengaktifkan startup otomatis..."
+    const nextMethod = startupStatus.enabled ? "DELETE" : "POST";
+    const loadingMessage = startupStatus.enabled
+      ? "Menonaktifkan startup otomatis..."
+      : "Mengaktifkan startup otomatis...";
 
-    onToast(loadingMessage, "info")
+    onToast(loadingMessage, "info");
 
     try {
-      const response = await fetch("/api/system/startup", { method: nextMethod })
-      const result = (await response.json()) as StartupStatus
-      const message = result.message ?? "Status startup diperbarui."
+      const response = await fetch("/api/system/startup", {
+        method: nextMethod,
+      });
+      const result = (await response.json()) as StartupStatus;
+      const message = result.message ?? "Status startup diperbarui.";
 
-      setStartupStatus(result)
-      onToast(message, response.ok ? "success" : "error")
+      setStartupStatus(result);
+      onToast(message, response.ok ? "success" : "error");
     } catch (error) {
-      onToast(error instanceof Error ? `Startup otomatis gagal: ${error.message}` : "Startup otomatis gagal diperbarui.", "error")
+      onToast(
+        error instanceof Error
+          ? `Startup otomatis gagal: ${error.message}`
+          : "Startup otomatis gagal diperbarui.",
+        "error",
+      );
     }
   }
 
@@ -2058,14 +2614,16 @@ function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; o
       access: ["Semua menu", "Setting Telegram", "System", "Reset Default"],
       tone: "border-emerald-200 bg-emerald-50/70 text-emerald-900 dark:bg-emerald-950/25 dark:text-emerald-50",
     },
-  ]
+  ];
 
   return (
     <section className={panelClass}>
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h1 className="text-sm font-semibold text-slate-950">System</h1>
-          <p className="mt-1 text-sm text-slate-500">Kelola role akses, akun lokal, dan reset default aplikasi.</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Kelola role akses, akun lokal, dan reset default aplikasi.
+          </p>
         </div>
         <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-violet-400 to-cyan-400 text-slate-950 shadow-lg shadow-violet-500/20">
           <Shield className="h-6 w-6" aria-hidden="true" />
@@ -2080,34 +2638,54 @@ function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; o
                 <UserCog className="h-5 w-5" aria-hidden="true" />
               </span>
               <div>
-                <p className="text-sm font-bold text-slate-950">Akun dan Role</p>
-                <p className="text-xs text-slate-500">Akun lokal untuk masuk ke Mikroin Monitor.</p>
+                <p className="text-sm font-bold text-slate-950">
+                  Akun dan Role
+                </p>
+                <p className="text-xs text-slate-500">
+                  Akun lokal untuk masuk ke Mikroin Monitor.
+                </p>
               </div>
             </div>
             <div className="mt-4 grid gap-4 2xl:grid-cols-[1fr_360px]">
               <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-1">
                 {users.map((user) => {
-                  const isLastSuperAdmin = user.role === "super-admin" && users.filter((item) => item.role === "super-admin").length <= 1
+                  const isLastSuperAdmin =
+                    user.role === "super-admin" &&
+                    users.filter((item) => item.role === "super-admin")
+                      .length <= 1;
 
                   return (
-                    <div key={user.id} className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm">
+                    <div
+                      key={user.id}
+                      className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm"
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-bold text-slate-950">{user.name}</p>
-                          <p className="text-xs text-slate-500">@{user.username}</p>
+                          <p className="text-sm font-bold text-slate-950">
+                            {user.name}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            @{user.username}
+                          </p>
                         </div>
                         <span className="rounded-xl border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-bold text-cyan-800">
                           {roleLabels[user.role]}
                         </span>
                       </div>
-                      <p className="mt-3 text-xs leading-5 text-slate-600">{roleDescriptions[user.role]}</p>
+                      <p className="mt-3 text-xs leading-5 text-slate-600">
+                        {roleDescriptions[user.role]}
+                      </p>
                       {isLastSuperAdmin && (
                         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
                           Super Admin terakhir
                         </p>
                       )}
                       <div className="mt-4 flex flex-wrap gap-2">
-                        <button className={secondaryButtonClass} type="button" onClick={() => editUser(user)}>
+                        <button
+                          className={secondaryButtonClass}
+                          type="button"
+                          onClick={() => editUser(user)}
+                        >
                           <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                           Edit
                         </button>
@@ -2115,7 +2693,11 @@ function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; o
                           className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-white"
                           type="button"
                           disabled={isLastSuperAdmin}
-                          title={isLastSuperAdmin ? "Super Admin terakhir tidak bisa dihapus" : "Hapus user"}
+                          title={
+                            isLastSuperAdmin
+                              ? "Super Admin terakhir tidak bisa dihapus"
+                              : "Hapus user"
+                          }
                           onClick={() => void removeUser(user)}
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -2123,19 +2705,27 @@ function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; o
                         </button>
                       </div>
                     </div>
-                  )
+                  );
                 })}
               </div>
               <div className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4 shadow-sm dark:bg-violet-950/20">
                 <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between 2xl:flex-col">
                   <div>
-                    <p className="text-sm font-bold text-slate-950">{editingUserId ? "Edit User" : "Tambah User"}</p>
+                    <p className="text-sm font-bold text-slate-950">
+                      {editingUserId ? "Edit User" : "Tambah User"}
+                    </p>
                     <p className="text-xs text-slate-500">
-                      {editingUserId ? "Kosongkan password jika tidak ingin mengganti password." : "Buat akun lokal baru untuk operator."}
+                      {editingUserId
+                        ? "Kosongkan password jika tidak ingin mengganti password."
+                        : "Buat akun lokal baru untuk operator."}
                     </p>
                   </div>
                   {editingUserId && (
-                    <button className={secondaryButtonClass} type="button" onClick={clearUserForm}>
+                    <button
+                      className={secondaryButtonClass}
+                      type="button"
+                      onClick={clearUserForm}
+                    >
                       Batal Edit
                     </button>
                   )}
@@ -2144,27 +2734,50 @@ function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; o
                   <TextInput
                     label="Username"
                     value={userForm.username}
-                    onChange={(value) => setUserForm((current) => ({ ...current, username: value }))}
+                    onChange={(value) =>
+                      setUserForm((current) => ({
+                        ...current,
+                        username: value,
+                      }))
+                    }
                     placeholder="teknisi01"
                   />
                   <TextInput
                     label="Nama"
                     value={userForm.name}
-                    onChange={(value) => setUserForm((current) => ({ ...current, name: value }))}
+                    onChange={(value) =>
+                      setUserForm((current) => ({ ...current, name: value }))
+                    }
                     placeholder="Teknisi Area"
                   />
                   <TextInput
-                    label={editingUserId ? "Password Baru (opsional)" : "Password"}
+                    label={
+                      editingUserId ? "Password Baru (opsional)" : "Password"
+                    }
                     value={userForm.password}
-                    onChange={(value) => setUserForm((current) => ({ ...current, password: value }))}
-                    placeholder={editingUserId ? "Isi untuk ganti password" : "Minimal 6 karakter"}
+                    onChange={(value) =>
+                      setUserForm((current) => ({
+                        ...current,
+                        password: value,
+                      }))
+                    }
+                    placeholder={
+                      editingUserId
+                        ? "Isi untuk ganti password"
+                        : "Minimal 6 karakter"
+                    }
                     type="password"
                   />
                   <SelectInput
                     label="Role"
                     value={userForm.role}
                     options={["admin", "super-admin"]}
-                    onChange={(value) => setUserForm((current) => ({ ...current, role: value as AppRole }))}
+                    onChange={(value) =>
+                      setUserForm((current) => ({
+                        ...current,
+                        role: value as AppRole,
+                      }))
+                    }
                   />
                 </div>
                 <button
@@ -2187,11 +2800,19 @@ function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; o
               <p className="text-sm font-bold text-slate-950">Hak Akses Role</p>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {roleAccess.map((item) => (
-                  <div key={item.role} className={`rounded-2xl border p-4 ${item.tone}`}>
-                    <p className="text-sm font-extrabold">{roleLabels[item.role]}</p>
+                  <div
+                    key={item.role}
+                    className={`rounded-2xl border p-4 ${item.tone}`}
+                  >
+                    <p className="text-sm font-extrabold">
+                      {roleLabels[item.role]}
+                    </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {item.access.map((access) => (
-                        <span key={access} className="rounded-full border border-current/20 bg-white/45 px-2.5 py-1 text-xs font-bold">
+                        <span
+                          key={access}
+                          className="rounded-full border border-current/20 bg-white/45 px-2.5 py-1 text-xs font-bold"
+                        >
                           {access}
                         </span>
                       ))}
@@ -2210,16 +2831,23 @@ function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; o
                 <Power className="h-5 w-5" aria-hidden="true" />
               </span>
               <div>
-                <p className="text-sm font-bold text-emerald-900 dark:text-emerald-50">Jalankan saat startup</p>
+                <p className="text-sm font-bold text-emerald-900 dark:text-emerald-50">
+                  Jalankan saat startup
+                </p>
                 <p className="text-xs text-emerald-700 dark:text-emerald-200">
-                  Platform: {startupPlatformLabel(startupStatus)} | Status: {startupStatus.enabled ? "Aktif" : "Nonaktif"}
+                  Platform: {startupPlatformLabel(startupStatus)} | Status:{" "}
+                  {startupStatus.enabled ? "Aktif" : "Nonaktif"}
                 </p>
               </div>
             </div>
             <p className="mt-4 text-sm leading-6 text-emerald-800 dark:text-emerald-100">
               {startupDescription(startupStatus)}
             </p>
-            {startupStatus.path && <p className="mt-2 break-all text-xs text-emerald-700 dark:text-emerald-200">{startupStatus.path}</p>}
+            {startupStatus.path && (
+              <p className="mt-2 break-all text-xs text-emerald-700 dark:text-emerald-200">
+                {startupStatus.path}
+              </p>
+            )}
             {startupStatus.supported === "automatic" && (
               <button
                 className={`mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl px-4 text-sm font-bold text-white shadow-lg transition ${
@@ -2231,7 +2859,9 @@ function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; o
                 onClick={() => void toggleStartup()}
               >
                 <Power className="h-4 w-4" aria-hidden="true" />
-                {startupStatus.enabled ? "Nonaktifkan Startup" : "Aktifkan Startup"}
+                {startupStatus.enabled
+                  ? "Nonaktifkan Startup"
+                  : "Aktifkan Startup"}
               </button>
             )}
             {startupStatus.supported === "manual" && startupStatus.linux && (
@@ -2246,16 +2876,22 @@ function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; o
                   onClick={() => void toggleStartup()}
                 >
                   <Power className="h-4 w-4" aria-hidden="true" />
-                  {startupStatus.enabled ? "Nonaktifkan Startup Linux" : "Install Startup Otomatis"}
+                  {startupStatus.enabled
+                    ? "Nonaktifkan Startup Linux"
+                    : "Install Startup Otomatis"}
                 </button>
                 <div className="rounded-2xl border border-emerald-200 bg-white/70 p-3">
-                  <p className="text-xs font-bold text-emerald-900">Command aktifkan systemd</p>
+                  <p className="text-xs font-bold text-emerald-900">
+                    Command aktifkan systemd
+                  </p>
                   <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-950 p-3 text-xs text-emerald-100">
                     {startupStatus.linux.commands.join("\n\n")}
                   </pre>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white/70 p-3">
-                  <p className="text-xs font-bold text-slate-900">Command nonaktifkan</p>
+                  <p className="text-xs font-bold text-slate-900">
+                    Command nonaktifkan
+                  </p>
                   <pre className="mt-2 whitespace-pre-wrap rounded-xl bg-slate-950 p-3 text-xs text-slate-100">
                     {startupStatus.linux.disableCommands.join("\n")}
                   </pre>
@@ -2264,25 +2900,37 @@ function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; o
             )}
             {startupStatus.supported === "unsupported" && (
               <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
-                Platform ini belum didukung otomatis. Gunakan service manager bawaan OS.
+                Platform ini belum didukung otomatis. Gunakan service manager
+                bawaan OS.
               </p>
             )}
           </div>
           <div className="rounded-3xl border border-slate-200 bg-white/60 p-5 shadow-sm">
             <p className="text-sm font-bold text-slate-950">Audit Log</p>
-            <p className="mt-1 text-xs text-slate-500">Aktivitas login dan perubahan user terbaru.</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Aktivitas login dan perubahan user terbaru.
+            </p>
             <div className="mt-4 max-h-80 space-y-2 overflow-auto pr-1">
               {auditLogs.length === 0 ? (
-                <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">Belum ada audit log.</p>
+                <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+                  Belum ada audit log.
+                </p>
               ) : (
                 auditLogs.slice(0, 20).map((log) => (
-                  <div key={log.id} className="rounded-2xl border border-slate-200 bg-white/70 p-3 text-xs">
+                  <div
+                    key={log.id}
+                    className="rounded-2xl border border-slate-200 bg-white/70 p-3 text-xs"
+                  >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-bold text-slate-950">{log.action}</span>
+                      <span className="font-bold text-slate-950">
+                        {log.action}
+                      </span>
                       <span className="text-slate-400">{log.createdAt}</span>
                     </div>
                     <p className="mt-1 text-slate-600">{log.detail}</p>
-                    <p className="mt-1 font-semibold text-cyan-700">Actor: {log.actor}</p>
+                    <p className="mt-1 font-semibold text-cyan-700">
+                      Actor: {log.actor}
+                    </p>
                   </div>
                 ))
               )}
@@ -2294,12 +2942,17 @@ function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; o
                 <Trash2 className="h-5 w-5" aria-hidden="true" />
               </span>
               <div>
-                <p className="text-sm font-bold text-red-900 dark:text-red-50">Reset Default</p>
-                <p className="text-xs text-red-700 dark:text-red-200">Mengosongkan database monitoring lokal.</p>
+                <p className="text-sm font-bold text-red-900 dark:text-red-50">
+                  Reset Default
+                </p>
+                <p className="text-xs text-red-700 dark:text-red-200">
+                  Mengosongkan database monitoring lokal.
+                </p>
               </div>
             </div>
             <p className="mt-4 text-sm leading-6 text-red-800 dark:text-red-100">
-              Data OLT, ONU/ONT, alert, dan setting Telegram akan kembali kosong. Akun login tetap bisa digunakan.
+              Data OLT, ONU/ONT, alert, dan setting Telegram akan kembali
+              kosong. Akun login tetap bisa digunakan.
             </p>
             <button
               className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-red-700 px-4 text-sm font-bold text-white shadow-lg shadow-red-900/20 transition hover:bg-red-600"
@@ -2313,7 +2966,7 @@ function SystemView({ onResetDefault, onToast }: { onResetDefault: () => void; o
         </div>
       </div>
     </section>
-  )
+  );
 }
 
 function TextInput({
@@ -2323,15 +2976,15 @@ function TextInput({
   type = "text",
   onChange,
 }: {
-  label: string
-  value: string
-  placeholder?: string
-  type?: string
-  onChange: (value: string) => void
+  label: string;
+  value: string;
+  placeholder?: string;
+  type?: string;
+  onChange: (value: string) => void;
 }) {
-  const [showPassword, setShowPassword] = useState(false)
-  const isPassword = type === "password"
-  const inputType = isPassword && showPassword ? "text" : type
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === "password";
+  const inputType = isPassword && showPassword ? "text" : type;
 
   return (
     <label className="block">
@@ -2349,18 +3002,32 @@ function TextInput({
             className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
             type="button"
             onClick={() => setShowPassword((current) => !current)}
-            aria-label={showPassword ? "Sembunyikan password" : "Lihat password"}
+            aria-label={
+              showPassword ? "Sembunyikan password" : "Lihat password"
+            }
             title={showPassword ? "Sembunyikan password" : "Lihat password"}
           >
-            {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+            {showPassword ? (
+              <EyeOff className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Eye className="h-4 w-4" aria-hidden="true" />
+            )}
           </button>
         )}
       </span>
     </label>
-  )
+  );
 }
 
-function ToggleInput({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+function ToggleInput({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
   return (
     <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/70 p-3">
       <span className="text-sm font-medium text-slate-700">{label}</span>
@@ -2371,7 +3038,7 @@ function ToggleInput({ label, checked, onChange }: { label: string; checked: boo
         onChange={(event) => onChange(event.target.checked)}
       />
     </label>
-  )
+  );
 }
 
 function SelectInput({
@@ -2380,10 +3047,10 @@ function SelectInput({
   options,
   onChange,
 }: {
-  label: string
-  value: string
-  options: string[]
-  onChange: (value: string) => void
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
 }) {
   return (
     <label className="block">
@@ -2400,33 +3067,35 @@ function SelectInput({
         ))}
       </select>
     </label>
-  )
+  );
 }
 
 function formatRxPower(value: number) {
-  if (!Number.isFinite(value) || value === 0) return "-"
-  return `${value} dBm`
+  if (!Number.isFinite(value) || value === 0) return "-";
+  return `${value} dBm`;
 }
 
 function formatTemperature(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "-"
-  return `${value} C`
+  if (value === null || value === undefined || !Number.isFinite(value))
+    return "-";
+  return `${value} C`;
 }
 
-type SignalTone = "good" | "warning" | "critical" | "empty"
+type SignalTone = "good" | "warning" | "critical" | "empty";
 
 function rxTone(value: number): SignalTone {
-  if (!Number.isFinite(value) || value === 0) return "empty"
-  if (value <= -27 || value >= -8) return "critical"
-  if (value <= -25 || value >= -10) return "warning"
-  return "good"
+  if (!Number.isFinite(value) || value === 0) return "empty";
+  if (value <= -27 || value >= -8) return "critical";
+  if (value <= -25 || value >= -10) return "warning";
+  return "good";
 }
 
 function temperatureTone(value: number | null | undefined): SignalTone {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "empty"
-  if (value >= 60) return "critical"
-  if (value >= 55) return "warning"
-  return "good"
+  if (value === null || value === undefined || !Number.isFinite(value))
+    return "empty";
+  if (value >= 60) return "critical";
+  if (value >= 55) return "warning";
+  return "good";
 }
 
 function SignalBadge({ value, tone }: { value: string; tone: SignalTone }) {
@@ -2435,13 +3104,19 @@ function SignalBadge({ value, tone }: { value: string; tone: SignalTone }) {
     warning: "border-amber-200 bg-amber-50 text-amber-700 shadow-amber-900/5",
     critical: "border-red-200 bg-red-50 text-red-700 shadow-red-900/5",
     empty: "border-slate-200 bg-slate-100 text-slate-600 shadow-slate-900/5",
-  }
+  };
 
-  return <span className={`inline-flex h-7 items-center rounded-lg border px-2.5 text-xs font-bold shadow-sm ${styles[tone]}`}>{value}</span>
+  return (
+    <span
+      className={`inline-flex h-7 items-center rounded-lg border px-2.5 text-xs font-bold shadow-sm ${styles[tone]}`}
+    >
+      {value}
+    </span>
+  );
 }
 
 function infoTileAccent(label: string) {
-  const text = label.toLowerCase()
+  const text = label.toLowerCase();
 
   if (text.includes("nama")) {
     return {
@@ -2449,7 +3124,7 @@ function infoTileAccent(label: string) {
       dot: "bg-cyan-400 shadow-cyan-400/50",
       label: "text-cyan-700 dark:text-cyan-200",
       value: "text-cyan-950 dark:text-cyan-50",
-    }
+    };
   }
 
   if (text.includes("tipe")) {
@@ -2458,7 +3133,7 @@ function infoTileAccent(label: string) {
       dot: "bg-sky-400 shadow-sky-400/50",
       label: "text-sky-700 dark:text-sky-200",
       value: "text-sky-950 dark:text-sky-50",
-    }
+    };
   }
 
   if (text.includes("firmware")) {
@@ -2467,7 +3142,7 @@ function infoTileAccent(label: string) {
       dot: "bg-amber-400 shadow-amber-400/50",
       label: "text-amber-700 dark:text-amber-200",
       value: "text-amber-950 dark:text-amber-50",
-    }
+    };
   }
 
   if (text.includes("lokasi")) {
@@ -2476,7 +3151,7 @@ function infoTileAccent(label: string) {
       dot: "bg-emerald-400 shadow-emerald-400/50",
       label: "text-emerald-700 dark:text-emerald-200",
       value: "text-emerald-950 dark:text-emerald-50",
-    }
+    };
   }
 
   return {
@@ -2484,26 +3159,45 @@ function infoTileAccent(label: string) {
     dot: "bg-lime-400 shadow-lime-400/50",
     label: "text-lime-700 dark:text-lime-200",
     value: "text-lime-950 dark:text-lime-50",
-  }
+  };
 }
 
-function InfoTile({ label, value, tone = "border-slate-200 bg-white/70" }: { label: string; value: string; tone?: string }) {
-  const accent = infoTileAccent(label)
+function InfoTile({
+  label,
+  value,
+  tone = "border-slate-200 bg-white/70",
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+}) {
+  const accent = infoTileAccent(label);
 
   return (
-    <div className={`relative overflow-hidden rounded-xl border p-3 shadow-sm ${tone}`}>
-      <span className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${accent.strip}`} />
-      <dt className={`flex items-center gap-2 text-xs font-semibold ${accent.label}`}>
+    <div
+      className={`relative overflow-hidden rounded-xl border p-3 shadow-sm ${tone}`}
+    >
+      <span
+        className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${accent.strip}`}
+      />
+      <dt
+        className={`flex items-center gap-2 text-xs font-semibold ${accent.label}`}
+      >
         <span className={`h-2 w-2 rounded-full shadow-lg ${accent.dot}`} />
         {label}
       </dt>
-      <dd className={`mt-2 break-words text-sm font-extrabold ${accent.value}`}>{value || "-"}</dd>
+      <dd className={`mt-2 break-words text-sm font-extrabold ${accent.value}`}>
+        {value || "-"}
+      </dd>
     </div>
-  )
+  );
 }
 
-function friendlySystemValue(olt: Olt, field: "name" | "firmware" | "location") {
-  const values = olt.systemInfo ?? {}
+function friendlySystemValue(
+  olt: Olt,
+  field: "name" | "firmware" | "location",
+) {
+  const values = olt.systemInfo ?? {};
   const map = {
     name: values["1.3.6.1.2.1.1.5.0"] || olt.name,
     firmware:
@@ -2514,18 +3208,21 @@ function friendlySystemValue(olt: Olt, field: "name" | "firmware" | "location") 
       cleanDisplayValue(values["1.3.6.1.4.1.37950.1.1.5.10.14.5.0"]) ||
       "-",
     location: values["1.3.6.1.2.1.1.6.0"] || olt.location,
-  }
+  };
 
-  return map[field]
+  return map[field];
 }
 
 function cleanDisplayValue(value: string | undefined) {
-  const text = String(value || "").trim()
+  const text = String(value || "").trim();
 
-  return text && text !== "-" ? text : ""
+  return text && text !== "-" ? text : "";
 }
 
-function deviceTypeFromSystem(values: Record<string, string> | undefined, fallback: string) {
+function deviceTypeFromSystem(
+  values: Record<string, string> | undefined,
+  fallback: string,
+) {
   return (
     cleanDisplayValue(values?.["1.3.6.1.4.1.25355.3.1.8.1.1.2.1"]) ||
     cleanDisplayValue(values?.["1.3.6.1.4.1.50224.3.1.1.19.0"]) ||
@@ -2533,22 +3230,33 @@ function deviceTypeFromSystem(values: Record<string, string> | undefined, fallba
     cleanDisplayValue(values?.["1.3.6.1.2.1.1.1.0"]) ||
     cleanDisplayValue(fallback) ||
     "-"
-  )
+  );
 }
 
-function deviceLocationFromSystem(values: Record<string, string> | undefined, fallback: string) {
-  return cleanDisplayValue(values?.["1.3.6.1.2.1.1.6.0"]) || cleanDisplayValue(fallback) || "-"
+function deviceLocationFromSystem(
+  values: Record<string, string> | undefined,
+  fallback: string,
+) {
+  return (
+    cleanDisplayValue(values?.["1.3.6.1.2.1.1.6.0"]) ||
+    cleanDisplayValue(fallback) ||
+    "-"
+  );
 }
 
 function displayDeviceType(olt: Olt) {
-  return deviceTypeFromSystem(olt.systemInfo, olt.model)
+  return deviceTypeFromSystem(olt.systemInfo, olt.model);
 }
 
 function displayLocation(olt: Olt) {
-  return deviceLocationFromSystem(olt.systemInfo, olt.location)
+  return deviceLocationFromSystem(olt.systemInfo, olt.location);
 }
 
-function buildOnuAlertDetail(onu: Onu, olt: Olt | undefined, extraLine?: string) {
+function buildOnuAlertDetail(
+  onu: Onu,
+  olt: Olt | undefined,
+  extraLine?: string,
+) {
   return [
     `Nama pelanggan: ${onu.name}`,
     `OLT: ${olt?.name ?? "-"}`,
@@ -2562,11 +3270,15 @@ function buildOnuAlertDetail(onu: Onu, olt: Olt | undefined, extraLine?: string)
     extraLine,
   ]
     .filter(Boolean)
-    .join(" | ")
+    .join(" | ");
 }
 
-function buildOperationalAlerts(olts: Olt[], onus: Onu[], savedAlerts: Alert[]) {
-  const generated: Alert[] = []
+function buildOperationalAlerts(
+  olts: Olt[],
+  onus: Onu[],
+  savedAlerts: Alert[],
+) {
+  const generated: Alert[] = [];
 
   for (const olt of olts) {
     if (olt.status !== "online") {
@@ -2578,13 +3290,16 @@ function buildOperationalAlerts(olts: Olt[], onus: Onu[], savedAlerts: Alert[]) 
         severity: "critical",
         createdAt: olt.lastSeen,
         acknowledged: false,
-      })
+      });
     }
   }
 
   for (const onu of onus) {
-    const olt = olts.find((item) => item.id === onu.oltId)
-    const hasSavedDownAlert = savedAlerts.some((alert) => !alert.acknowledged && alert.id.startsWith(`onu-${onu.id}-down-`))
+    const olt = olts.find((item) => item.id === onu.oltId);
+    const hasSavedDownAlert = savedAlerts.some(
+      (alert) =>
+        !alert.acknowledged && alert.id.startsWith(`onu-${onu.id}-down-`),
+    );
 
     if (onu.status !== "online") {
       if (!hasSavedDownAlert) {
@@ -2596,9 +3311,9 @@ function buildOperationalAlerts(olts: Olt[], onus: Onu[], savedAlerts: Alert[]) 
           severity: "critical",
           createdAt: onu.lastSeen,
           acknowledged: false,
-        })
+        });
       }
-      continue
+      continue;
     }
 
     if (onu.rxPower <= -27) {
@@ -2606,27 +3321,39 @@ function buildOperationalAlerts(olts: Olt[], onus: Onu[], savedAlerts: Alert[]) 
         id: `onu-${onu.id}-rx-critical`,
         oltId: onu.oltId,
         title: `RX lemah: ${onu.name}`,
-        detail: buildOnuAlertDetail(onu, olt, "Catatan: Perlu pengecekan redaman."),
+        detail: buildOnuAlertDetail(
+          onu,
+          olt,
+          "Catatan: Perlu pengecekan redaman.",
+        ),
         severity: "warning",
         createdAt: onu.lastSeen,
         acknowledged: false,
-      })
+      });
     }
 
-    if (onu.temperatureC !== null && onu.temperatureC !== undefined && onu.temperatureC >= 55) {
+    if (
+      onu.temperatureC !== null &&
+      onu.temperatureC !== undefined &&
+      onu.temperatureC >= 55
+    ) {
       generated.push({
         id: `onu-${onu.id}-temperature`,
         oltId: onu.oltId,
         title: `Suhu tinggi: ${onu.name}`,
-        detail: buildOnuAlertDetail(onu, olt, "Catatan: Perlu cek modul/lingkungan ONT."),
+        detail: buildOnuAlertDetail(
+          onu,
+          olt,
+          "Catatan: Perlu cek modul/lingkungan ONT.",
+        ),
         severity: "warning",
         createdAt: onu.lastSeen,
         acknowledged: false,
-      })
+      });
     }
   }
 
-  return [...generated, ...savedAlerts]
+  return [...generated, ...savedAlerts];
 }
 
 function EmptyState({ title, text }: { title: string; text: string }) {
@@ -2635,5 +3362,5 @@ function EmptyState({ title, text }: { title: string; text: string }) {
       <p className="text-sm font-semibold text-slate-950">{title}</p>
       <p className="mt-1 text-sm text-slate-500">{text}</p>
     </div>
-  )
+  );
 }
