@@ -70,9 +70,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
     useState<ClearAlertsMode | null>(null);
   const stateRef = useRef(storedState);
   const pollingLocksRef = useRef(new Set<string>());
-  const pollOnuRef = useRef<
-    (olt: Olt, options?: { silent?: boolean }) => Promise<void>
-  >(async () => undefined);
+  const lastStateChangeRef = useRef<number>(0);
   const { alerts, olts, onus, settings } = storedState;
 
   function showToast(message: string, tone: ToastTone = "info") {
@@ -133,6 +131,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
 
   useEffect(() => {
     let cancelled = false;
+    const intervalMs = activePollingIds.length > 0 ? 1500 : 4000;
 
     async function checkPollingStatus() {
       try {
@@ -142,63 +141,18 @@ export function MonitoringWorkspace({ view }: { view: View }) {
           activePolls?: string[];
           failedPolls?: FailedPollInfo[];
           successfulPolls?: SuccessfulPollInfo[];
+          lastStateChangeAt?: number;
         };
-        if (!cancelled) {
-          if (Array.isArray(data.activePolls)) {
-            setActivePollingIds(data.activePolls);
-          }
-          if (Array.isArray(data.failedPolls)) {
-            setFailedPolls((prev) => {
-              const next = { ...prev };
-              for (const item of data.failedPolls!) {
-                next[item.oltId] = item;
-              }
-              return next;
-            });
-          }
-          if (Array.isArray(data.successfulPolls)) {
-            setSuccessfulPolls((prev) => {
-              const next = { ...prev };
-              for (const item of data.successfulPolls!) {
-                next[item.oltId] = item;
-              }
-              return next;
-            });
-          }
-        }
-      } catch {
-        // Ignore network errors on polling status check
-      }
-    }
+        if (cancelled) return;
 
-    void checkPollingStatus();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (activePollingIds.length === 0) return;
-
-    const interval = window.setInterval(async () => {
-      try {
-        const res = await fetch("/api/snmp/poll-onu");
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          activePolls?: string[];
-          failedPolls?: FailedPollInfo[];
-          successfulPolls?: SuccessfulPollInfo[];
-        };
         if (Array.isArray(data.failedPolls)) {
-          setFailedPolls((prev) => {
-            const next = { ...prev };
-            for (const item of data.failedPolls!) {
-              next[item.oltId] = item;
-            }
-            return next;
-          });
+          const nextFailed: Record<string, FailedPollInfo> = {};
+          for (const item of data.failedPolls) {
+            nextFailed[item.oltId] = item;
+          }
+          setFailedPolls(nextFailed);
         }
+
         if (Array.isArray(data.successfulPolls)) {
           setSuccessfulPolls((prev) => {
             const next = { ...prev };
@@ -208,25 +162,42 @@ export function MonitoringWorkspace({ view }: { view: View }) {
             return next;
           });
         }
+
+        const stateChanged =
+          typeof data.lastStateChangeAt === "number" &&
+          data.lastStateChangeAt > 0 &&
+          data.lastStateChangeAt !== lastStateChangeRef.current;
+
+        if (typeof data.lastStateChangeAt === "number" && data.lastStateChangeAt > 0) {
+          lastStateChangeRef.current = data.lastStateChangeAt;
+        }
+
         if (Array.isArray(data.activePolls)) {
-          if (data.activePolls.length === 0) {
+          const finishedPolling =
+            activePollingIds.length > 0 && data.activePolls.length === 0;
+          setActivePollingIds(data.activePolls);
+
+          if (stateChanged || finishedPolling) {
             const stateRes = await fetch("/api/monitoring/state");
-            if (stateRes.ok) {
+            if (stateRes.ok && !cancelled) {
               const nextState = (await stateRes.json()) as MonitoringState;
               stateRef.current = nextState;
               setStoredState(nextState);
             }
-            setActivePollingIds([]);
-          } else {
-            setActivePollingIds(data.activePolls);
           }
         }
       } catch {
         // Ignore network errors on polling status check
       }
-    }, 1500);
+    }
 
-    return () => window.clearInterval(interval);
+    void checkPollingStatus();
+    const timer = window.setInterval(() => void checkPollingStatus(), intervalMs);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [activePollingIds.length]);
 
   useEffect(() => {
@@ -888,25 +859,6 @@ export function MonitoringWorkspace({ view }: { view: View }) {
       setActivePollingIds((prev) => prev.filter((id) => id !== olt.id));
     }
   }
-
-  useEffect(() => {
-    pollOnuRef.current = pollOnu;
-  });
-
-  useEffect(() => {
-    if (olts.length === 0) return;
-
-    const timers = olts.map((olt) => {
-      const intervalSeconds = Math.max(10, Number(olt.pollingInterval) || 60);
-      return window.setInterval(() => {
-        void pollOnuRef.current(olt, { silent: true });
-      }, intervalSeconds * 1000);
-    });
-
-    return () => {
-      timers.forEach((timer) => window.clearInterval(timer));
-    };
-  }, [olts]);
 
   return (
     <main className="p-4 lg:p-6">

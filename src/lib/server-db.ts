@@ -322,3 +322,144 @@ export async function writeMonitoringState(state: MonitoringState) {
 
   return norm
 }
+
+export async function writeSingleOltPollResult(input: {
+  oltId: string
+  status: Olt["status"]
+  activeOnu?: number
+  lastSeen: string
+  onus?: Onu[]
+  newAlerts?: Alert[]
+  acknowledgeOnuIds?: string[]
+  acknowledgeOltDown?: boolean
+}): Promise<MonitoringState> {
+  try {
+    // 1. Update only the target OLT row
+    await db.olt.updateMany({
+      where: { id: input.oltId },
+      data: {
+        status: input.status,
+        ...(input.activeOnu !== undefined ? { activeOnu: input.activeOnu } : {}),
+        lastSeen: input.lastSeen,
+      },
+    })
+
+    // 2. If ONUs were polled, sync only this OLT's ONUs
+    if (input.onus) {
+      const onuIds = input.onus.map((o) => o.id)
+      await db.onu.deleteMany({
+        where: {
+          oltId: input.oltId,
+          id: { notIn: onuIds },
+        },
+      })
+
+      const onuBatchSize = 200
+      for (let i = 0; i < input.onus.length; i += onuBatchSize) {
+        const batch = input.onus.slice(i, i + onuBatchSize)
+        await db.$transaction(
+          batch.map((onu) =>
+            db.onu.upsert({
+              where: { id: onu.id },
+              update: {
+                oltId: onu.oltId,
+                name: onu.name,
+                serialNumber: onu.serialNumber,
+                ponPort: onu.ponPort,
+                onuIndex: onu.onuIndex,
+                status: onu.status,
+                rxPower: onu.rxPower,
+                txPower: onu.txPower,
+                temperatureC: onu.temperatureC ?? null,
+                downReason: onu.downReason ?? null,
+                distanceMeters: onu.distanceMeters || 0,
+                lastSeen: onu.lastSeen || "Baru saja",
+                syncStatus: onu.syncStatus || "synced",
+              },
+              create: {
+                id: onu.id,
+                oltId: onu.oltId,
+                name: onu.name,
+                serialNumber: onu.serialNumber,
+                ponPort: onu.ponPort,
+                onuIndex: onu.onuIndex,
+                status: onu.status,
+                rxPower: onu.rxPower,
+                txPower: onu.txPower,
+                temperatureC: onu.temperatureC ?? null,
+                downReason: onu.downReason ?? null,
+                distanceMeters: onu.distanceMeters || 0,
+                lastSeen: onu.lastSeen || "Baru saja",
+                syncStatus: onu.syncStatus || "synced",
+              },
+            }),
+          ),
+        )
+      }
+    }
+
+    // 3. Acknowledge recovered down alerts for this OLT / its ONUs
+    const orFilters: Array<{ id: { startsWith: string } }> = []
+    if (input.acknowledgeOltDown) {
+      orFilters.push({ id: { startsWith: `olt-${input.oltId}-down-` } })
+    }
+    if (input.acknowledgeOnuIds && input.acknowledgeOnuIds.length > 0) {
+      for (const onuId of input.acknowledgeOnuIds) {
+        orFilters.push({ id: { startsWith: `onu-${onuId}-down-` } })
+      }
+    }
+    if (orFilters.length > 0) {
+      await db.alert.updateMany({
+        where: {
+          oltId: input.oltId,
+          acknowledged: false,
+          OR: orFilters,
+        },
+        data: { acknowledged: true },
+      })
+    }
+
+    // 4. Insert new transition alerts & cap total stored alerts at 300
+    if (input.newAlerts && input.newAlerts.length > 0) {
+      await db.$transaction(
+        input.newAlerts.map((alert) =>
+          db.alert.upsert({
+            where: { id: alert.id },
+            update: {
+              oltId: alert.oltId,
+              title: alert.title,
+              detail: alert.detail,
+              severity: alert.severity,
+              acknowledged: alert.acknowledged,
+              createdAt: alert.createdAt,
+            },
+            create: {
+              id: alert.id,
+              oltId: alert.oltId,
+              title: alert.title,
+              detail: alert.detail,
+              severity: alert.severity,
+              acknowledged: alert.acknowledged,
+              createdAt: alert.createdAt,
+            },
+          }),
+        ),
+      )
+
+      const oldAlerts = await db.alert.findMany({
+        orderBy: { storedAt: "desc" },
+        skip: 300,
+        select: { id: true },
+      })
+      if (oldAlerts.length > 0) {
+        await db.alert.deleteMany({
+          where: { id: { in: oldAlerts.map((a) => a.id) } },
+        })
+      }
+    }
+  } catch (error) {
+    console.error(`Failed to write poll result for OLT ${input.oltId}:`, error)
+  }
+
+  return readMonitoringState()
+}
