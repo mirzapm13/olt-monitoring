@@ -16,6 +16,7 @@ import type { Olt } from "@/lib/types";
 import {
   EmptyState,
   InfoTile,
+  OltHealthMetricsRow,
   SelectInput,
   TextInput,
 } from "./ui-primitives";
@@ -30,6 +31,8 @@ import {
 import {
   displayDeviceType,
   displayLocation,
+  displayOltTemperature,
+  formatOltUptime,
   friendlySystemValue,
   oltAccent,
   supportsSnmpWriteTest,
@@ -392,6 +395,13 @@ export function OltListPanel({
                     tone={accent.tile}
                   />
                 </div>
+                <OltHealthMetricsRow
+                  cpuLoad={olt.cpuLoad}
+                  memoryLoad={olt.memoryLoad}
+                  uptime={formatOltUptime(olt)}
+                  temperatureC={displayOltTemperature(olt)}
+                  className="mt-2.5 md:col-span-2"
+                />
                 {!isPolling && failedPoll && (
                   <div className="mt-3 flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50/90 px-3.5 py-2 text-xs text-red-800 md:col-span-2 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-200">
                     <CircleAlert

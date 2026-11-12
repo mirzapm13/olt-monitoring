@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import type { Alert, Olt } from "@/lib/types";
-import { EmptyState, InfoTile } from "./ui-primitives";
+import { EmptyState, InfoTile, OltHealthMetricsRow } from "./ui-primitives";
 import {
   panelClass,
   tableShellClass,
@@ -19,6 +19,8 @@ import {
 import {
   displayDeviceType,
   displayLocation,
+  displayOltTemperature,
+  formatOltUptime,
   oltAccent,
 } from "./workspace-utils";
 
@@ -202,6 +204,13 @@ function OltSummary({
           tone={accent.tile}
         />
       </dl>
+      <OltHealthMetricsRow
+        cpuLoad={olt.cpuLoad}
+        memoryLoad={olt.memoryLoad}
+        uptime={formatOltUptime(olt)}
+        temperatureC={displayOltTemperature(olt)}
+        className="mt-2.5"
+      />
     </div>
   );
 }

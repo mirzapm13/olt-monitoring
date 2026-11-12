@@ -305,11 +305,18 @@ export async function pollSingleOlt(requestedOlt: Olt) {
       const polledAt = nowJakarta()
       const onlineCount = polledOnus.filter((onu) => onu.status === "online").length
       const timestampedOnus = polledOnus.map((onu) => ({ ...onu, lastSeen: polledAt }))
+      const mergedSystemInfo = result.health?.systemInfoPatch
+        ? { ...(olt.systemInfo ?? {}), ...result.health.systemInfoPatch }
+        : undefined
 
       const savedState = await writeSingleOltPollResult({
         oltId: olt.id,
         status: "online",
         activeOnu: onlineCount,
+        cpuLoad: result.health?.cpuLoad,
+        memoryLoad: result.health?.memoryLoad,
+        uptime: result.health?.uptime,
+        systemInfo: mergedSystemInfo,
         lastSeen: polledAt,
         onus: timestampedOnus,
         newAlerts: [...(oltRecoveryAlert ? [oltRecoveryAlert] : []), ...transition.alerts],

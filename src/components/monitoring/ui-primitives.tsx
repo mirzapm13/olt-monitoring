@@ -393,51 +393,51 @@ function infoTileAccent(label: string) {
   if (text.includes("nama")) {
     return {
       strip: "from-cyan-400 via-sky-300 to-cyan-200",
-      dot: "bg-cyan-400 shadow-cyan-400/50",
-      label: "text-cyan-700 dark:text-cyan-200",
-      value: "text-cyan-950 dark:text-cyan-50",
+      dot: "bg-cyan-500 shadow-cyan-400/50",
+      label: "text-cyan-700 dark:text-cyan-300",
+      value: "text-slate-900 dark:text-slate-100",
     };
   }
 
   if (text.includes("tipe")) {
     return {
       strip: "from-sky-400 via-blue-300 to-cyan-200",
-      dot: "bg-sky-400 shadow-sky-400/50",
-      label: "text-sky-700 dark:text-sky-200",
-      value: "text-sky-950 dark:text-sky-50",
+      dot: "bg-sky-500 shadow-sky-400/50",
+      label: "text-sky-700 dark:text-sky-300",
+      value: "text-slate-900 dark:text-slate-100",
     };
   }
 
   if (text.includes("firmware")) {
     return {
       strip: "from-amber-300 via-orange-300 to-yellow-200",
-      dot: "bg-amber-400 shadow-amber-400/50",
-      label: "text-amber-700 dark:text-amber-200",
-      value: "text-amber-950 dark:text-amber-50",
+      dot: "bg-amber-500 shadow-amber-400/50",
+      label: "text-amber-700 dark:text-amber-300",
+      value: "text-slate-900 dark:text-slate-100",
     };
   }
 
   if (text.includes("lokasi")) {
     return {
       strip: "from-emerald-400 via-teal-300 to-lime-200",
-      dot: "bg-emerald-400 shadow-emerald-400/50",
-      label: "text-emerald-700 dark:text-emerald-200",
-      value: "text-emerald-950 dark:text-emerald-50",
+      dot: "bg-emerald-500 shadow-emerald-400/50",
+      label: "text-emerald-700 dark:text-emerald-300",
+      value: "text-slate-900 dark:text-slate-100",
     };
   }
 
   return {
     strip: "from-lime-300 via-emerald-300 to-cyan-200",
-    dot: "bg-lime-400 shadow-lime-400/50",
-    label: "text-lime-700 dark:text-lime-200",
-    value: "text-lime-950 dark:text-lime-50",
+    dot: "bg-emerald-500 shadow-emerald-400/50",
+    label: "text-emerald-700 dark:text-emerald-300",
+    value: "text-slate-900 dark:text-slate-100",
   };
 }
 
 export function InfoTile({
   label,
   value,
-  tone = "border-slate-200 bg-white/70",
+  tone = "border-slate-200 bg-transparent dark:border-slate-700/70",
 }: {
   label: string;
   value: string;
@@ -447,7 +447,7 @@ export function InfoTile({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-xl border p-3 shadow-sm ${tone}`}
+      className={`relative overflow-hidden rounded-xl border p-3 ${tone}`}
     >
       <span
         className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${accent.strip}`}
@@ -470,6 +470,105 @@ export function EmptyState({ title, text }: { title: string; text: string }) {
     <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 p-8 text-center">
       <p className="text-sm font-semibold text-slate-950">{title}</p>
       <p className="mt-1 text-sm text-slate-500">{text}</p>
+    </div>
+  );
+}
+
+export function OltHealthMetricsRow({
+  cpuLoad,
+  memoryLoad,
+  uptime,
+  temperatureC,
+  className = "",
+}: {
+  cpuLoad: number;
+  memoryLoad: number;
+  uptime: string;
+  temperatureC?: number | null;
+  className?: string;
+}) {
+  const cpuVal = Number.isFinite(cpuLoad) && cpuLoad > 0 ? Math.round(cpuLoad) : null;
+  const memVal = Number.isFinite(memoryLoad) && memoryLoad > 0 ? Math.round(memoryLoad) : null;
+  const tempVal =
+    temperatureC !== null && temperatureC !== undefined && Number.isFinite(temperatureC)
+      ? Math.round(temperatureC)
+      : null;
+
+  const meterColor = (val: number | null) => {
+    if (val === null) return "bg-slate-300 dark:bg-slate-700";
+    if (val >= 85) return "bg-red-500";
+    if (val >= 65) return "bg-amber-500";
+    return "bg-emerald-500";
+  };
+
+  const textTone = (val: number | null) => {
+    if (val === null) return "text-slate-500 dark:text-slate-400";
+    if (val >= 85) return "text-red-700 dark:text-red-300";
+    if (val >= 65) return "text-amber-700 dark:text-amber-300";
+    return "text-emerald-700 dark:text-emerald-300";
+  };
+
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-2 text-xs ${className}`}
+    >
+      <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-2.5 py-1.5 dark:border-slate-700/80">
+        <span className="font-semibold text-slate-500 dark:text-slate-400">
+          CPU
+        </span>
+        <div className="h-1.5 w-12 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+          <div
+            className={`h-full rounded-full transition-all ${meterColor(cpuVal)}`}
+            style={{ width: `${cpuVal !== null ? Math.min(100, Math.max(4, cpuVal)) : 0}%` }}
+          />
+        </div>
+        <span className={`font-extrabold ${textTone(cpuVal)}`}>
+          {cpuVal !== null ? `${cpuVal}%` : "-"}
+        </span>
+      </div>
+
+      <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-2.5 py-1.5 dark:border-slate-700/80">
+        <span className="font-semibold text-slate-500 dark:text-slate-400">
+          RAM
+        </span>
+        <div className="h-1.5 w-12 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+          <div
+            className={`h-full rounded-full transition-all ${meterColor(memVal)}`}
+            style={{ width: `${memVal !== null ? Math.min(100, Math.max(4, memVal)) : 0}%` }}
+          />
+        </div>
+        <span className={`font-extrabold ${textTone(memVal)}`}>
+          {memVal !== null ? `${memVal}%` : "-"}
+        </span>
+      </div>
+
+      <div className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-2.5 py-1.5 dark:border-slate-700/80">
+        <span className="font-semibold text-slate-500 dark:text-slate-400">
+          Uptime
+        </span>
+        <span className="font-bold text-slate-900 dark:text-slate-100">
+          {uptime || "-"}
+        </span>
+      </div>
+
+      {tempVal !== null && (
+        <div className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-2.5 py-1.5 dark:border-slate-700/80">
+          <span className="font-semibold text-slate-500 dark:text-slate-400">
+            Suhu OLT
+          </span>
+          <span
+            className={`font-extrabold ${
+              tempVal >= 65
+                ? "text-red-700 dark:text-red-300"
+                : tempVal >= 55
+                  ? "text-amber-700 dark:text-amber-300"
+                  : "text-emerald-700 dark:text-emerald-300"
+            }`}
+          >
+            {tempVal} °C
+          </span>
+        </div>
+      )}
     </div>
   );
 }

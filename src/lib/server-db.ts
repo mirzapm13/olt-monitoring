@@ -327,6 +327,10 @@ export async function writeSingleOltPollResult(input: {
   oltId: string
   status: Olt["status"]
   activeOnu?: number
+  cpuLoad?: number
+  memoryLoad?: number
+  uptime?: string
+  systemInfo?: Record<string, string>
   lastSeen: string
   onus?: Onu[]
   newAlerts?: Alert[]
@@ -340,6 +344,10 @@ export async function writeSingleOltPollResult(input: {
       data: {
         status: input.status,
         ...(input.activeOnu !== undefined ? { activeOnu: input.activeOnu } : {}),
+        ...(input.cpuLoad !== undefined ? { cpuLoad: input.cpuLoad } : {}),
+        ...(input.memoryLoad !== undefined ? { memoryLoad: input.memoryLoad } : {}),
+        ...(input.uptime !== undefined ? { uptime: input.uptime } : {}),
+        ...(input.systemInfo !== undefined ? { systemInfo: input.systemInfo } : {}),
         lastSeen: input.lastSeen,
       },
     })

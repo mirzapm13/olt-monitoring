@@ -902,6 +902,153 @@ async function pollHiosoEponOnusFromOlt(snmp: typeof import("net-snmp"), session
     })
 }
 
+export type OltHealthMetrics = {
+  cpuLoad?: number
+  memoryLoad?: number
+  uptime?: string
+  temperatureC?: number | null
+  systemInfoPatch?: Record<string, string>
+}
+
+function formatSecondsToUptime(totalSeconds: number) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return ""
+  const sec = Math.floor(totalSeconds)
+  const days = Math.floor(sec / 86400)
+  const hours = Math.floor((sec % 86400) / 3600)
+  const minutes = Math.floor((sec % 3600) / 60)
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
+}
+
+function formatVsolUptimeString(raw: string) {
+  const text = String(raw || "").trim()
+  if (!text) return ""
+  const d = text.match(/(\d+)\s*Days?/i)
+  const h = text.match(/(\d+)\s*Hours?/i)
+  const m = text.match(/(\d+)\s*Minutes?/i)
+  if (d || h || m) {
+    const parts: string[] = []
+    if (d && Number(d[1]) > 0) parts.push(`${Number(d[1])}d`)
+    if (h) parts.push(`${Number(h[1])}h`)
+    if (m) parts.push(`${Number(m[1])}m`)
+    return parts.join(" ") || text
+  }
+  return text
+}
+
+async function pollOltHealthMetrics(
+  snmp: typeof import("net-snmp"),
+  session: SnmpSession,
+  olt: Olt,
+): Promise<OltHealthMetrics | undefined> {
+  try {
+    if (olt.oidProfile === "hsgq-epon" || olt.oidProfile === "hsgq-gpon") {
+      const oids = [
+        "1.3.6.1.4.1.50224.3.1.1.3.0",
+        "1.3.6.1.4.1.50224.3.1.1.17.0",
+        "1.3.6.1.4.1.50224.3.1.1.18.0",
+        "1.3.6.1.2.1.1.3.0",
+      ]
+      const rows = await getRowsWithFallback(snmp, session, oids)
+      const map = new Map(rows.map((r) => [r.oid, r.value]))
+      const cpu = toNumber(map.get("1.3.6.1.4.1.50224.3.1.1.17.0"))
+      const mem = toNumber(map.get("1.3.6.1.4.1.50224.3.1.1.18.0"))
+      const upSec = toNumber(map.get("1.3.6.1.4.1.50224.3.1.1.3.0"))
+      const sysTicks = toNumber(map.get("1.3.6.1.2.1.1.3.0"))
+      const uptime =
+        upSec !== null && upSec > 0
+          ? formatSecondsToUptime(upSec)
+          : sysTicks !== null && sysTicks > 0
+            ? formatSecondsToUptime(sysTicks / 100)
+            : undefined
+
+      return {
+        ...(cpu !== null ? { cpuLoad: Math.max(0, Math.min(100, Math.round(cpu))) } : {}),
+        ...(mem !== null ? { memoryLoad: Math.max(0, Math.min(100, Math.round(mem))) } : {}),
+        ...(uptime ? { uptime } : {}),
+      }
+    }
+
+    if (
+      olt.oidProfile === "vsol-epon" ||
+      olt.oidProfile === "vsol-epon-v16004dl" ||
+      olt.oidProfile === "vsol-epon-v1600d8" ||
+      olt.oidProfile === "vsol-gpon"
+    ) {
+      const oids = [
+        "1.3.6.1.4.1.37950.1.1.5.10.12.3.0",
+        "1.3.6.1.4.1.37950.1.1.5.10.12.4.0",
+        "1.3.6.1.4.1.37950.1.1.5.10.12.5.8.0",
+        "1.3.6.1.4.1.37950.1.1.5.10.12.5.9.0",
+        "1.3.6.1.2.1.1.3.0",
+      ]
+      const rows = await getRowsWithFallback(snmp, session, oids)
+      const map = new Map(rows.map((r) => [r.oid, r.value]))
+      const cpu = toNumber(map.get("1.3.6.1.4.1.37950.1.1.5.10.12.3.0"))
+      const mem = toNumber(map.get("1.3.6.1.4.1.37950.1.1.5.10.12.4.0"))
+      const temp = toNumber(map.get("1.3.6.1.4.1.37950.1.1.5.10.12.5.9.0"))
+      const rawUp = map.get("1.3.6.1.4.1.37950.1.1.5.10.12.5.8.0")
+      const sysTicks = toNumber(map.get("1.3.6.1.2.1.1.3.0"))
+      const uptime = rawUp
+        ? formatVsolUptimeString(rawUp)
+        : sysTicks !== null && sysTicks > 0
+          ? formatSecondsToUptime(sysTicks / 100)
+          : undefined
+
+      const systemInfoPatch: Record<string, string> = {}
+      if (temp !== null && temp > -40 && temp < 150) {
+        systemInfoPatch["1.3.6.1.4.1.37950.1.1.5.10.12.5.9.0"] = String(temp)
+        systemInfoPatch["oltTemperatureC"] = String(temp)
+      }
+
+      return {
+        ...(cpu !== null ? { cpuLoad: Math.max(0, Math.min(100, Math.round(cpu))) } : {}),
+        ...(mem !== null ? { memoryLoad: Math.max(0, Math.min(100, Math.round(mem))) } : {}),
+        ...(uptime ? { uptime } : {}),
+        ...(temp !== null ? { temperatureC: temp } : {}),
+        ...(Object.keys(systemInfoPatch).length > 0 ? { systemInfoPatch } : {}),
+      }
+    }
+
+    if (olt.oidProfile === "hioso-epon") {
+      const oids = [
+        "1.3.6.1.2.1.1.3.0",
+        "1.3.6.1.2.1.25.3.3.1.2.768",
+        "1.3.6.1.2.1.25.2.3.1.5.1",
+        "1.3.6.1.2.1.25.2.3.1.6.1",
+        "1.3.6.1.2.1.25.2.3.1.5.6",
+        "1.3.6.1.2.1.25.2.3.1.5.7",
+      ]
+      const rows = await getRowsWithFallback(snmp, session, oids)
+      const map = new Map(rows.map((r) => [r.oid, r.value]))
+      const cpu = toNumber(map.get("1.3.6.1.2.1.25.3.3.1.2.768"))
+      const totalKb = toNumber(map.get("1.3.6.1.2.1.25.2.3.1.5.1"))
+      const usedKb = toNumber(map.get("1.3.6.1.2.1.25.2.3.1.6.1"))
+      const buffersKb = toNumber(map.get("1.3.6.1.2.1.25.2.3.1.5.6")) ?? 0
+      const cachedKb = toNumber(map.get("1.3.6.1.2.1.25.2.3.1.5.7")) ?? 0
+
+      let memPct: number | null = null
+      if (totalKb !== null && totalKb > 0 && usedKb !== null && usedKb >= 0) {
+        const activeKb = Math.max(0, usedKb - buffersKb - cachedKb)
+        memPct = Math.max(1, Math.min(100, Math.round((activeKb / totalKb) * 100)))
+      }
+
+      const sysTicks = toNumber(map.get("1.3.6.1.2.1.1.3.0"))
+      const uptime = sysTicks !== null && sysTicks > 0 ? formatSecondsToUptime(sysTicks / 100) : undefined
+
+      return {
+        ...(cpu !== null ? { cpuLoad: Math.max(0, Math.min(100, Math.round(cpu))) } : {}),
+        ...(memPct !== null ? { memoryLoad: memPct } : {}),
+        ...(uptime ? { uptime } : {}),
+      }
+    }
+  } catch {
+    // Health metric failure should never fail ONU polling
+  }
+  return undefined
+}
+
 export async function testSnmpConnection(olt: SnmpTestTarget) {
   if (!olt.ipAddress || !olt.readCommunity) {
     return {
@@ -979,31 +1126,37 @@ export async function pollOnusFromOlt(olt: Olt) {
   try {
     if (olt.oidProfile === "vsol-gpon") {
       const onus = await pollVsolOnusFromOlt(snmp, session, olt)
+      const health = await pollOltHealthMetrics(snmp, session, olt)
 
       return {
         ok: true,
         message: `Polling ONU selesai. Ditemukan ${onus.length} ONU/ONT dari ${olt.name}.`,
         onus,
+        health,
       }
     }
 
     if (olt.oidProfile === "vsol-epon" || olt.oidProfile === "vsol-epon-v16004dl" || olt.oidProfile === "vsol-epon-v1600d8") {
       const onus = await pollVsolEponOnusFromOlt(snmp, session, olt)
+      const health = await pollOltHealthMetrics(snmp, session, olt)
 
       return {
         ok: true,
         message: `Polling ONU selesai. Ditemukan ${onus.length} ONU/ONT dari ${olt.name}.`,
         onus,
+        health,
       }
     }
 
     if (olt.oidProfile === "hioso-epon") {
       const onus = await pollHiosoEponOnusFromOlt(snmp, session, olt)
+      const health = await pollOltHealthMetrics(snmp, session, olt)
 
       return {
         ok: true,
         message: `Polling ONU selesai. Ditemukan ${onus.length} ONU/ONT dari ${olt.name}.`,
         onus,
+        health,
       }
     }
 
@@ -1020,11 +1173,13 @@ export async function pollOnusFromOlt(olt: Olt) {
     assignOpticalColumn(onusByIndex, opticalRows, oids.temperature, "temperature")
 
     const onus = mapHsgqOnus(olt, [...onusByIndex.values()])
+    const health = await pollOltHealthMetrics(snmp, session, olt)
 
     return {
       ok: true,
       message: `Polling ONU selesai. Ditemukan ${onus.length} ONU/ONT dari ${olt.name}.`,
       onus,
+      health,
     }
   } catch (error) {
     return {

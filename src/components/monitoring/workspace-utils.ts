@@ -106,7 +106,7 @@ export function oltAccent(olt: Olt) {
         "border-emerald-300 bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 shadow-emerald-900/15 dark:from-emerald-950/55 dark:via-teal-950/45 dark:to-cyan-950/35",
       icon: "bg-gradient-to-br from-emerald-400 to-teal-500 text-slate-950 shadow-emerald-500/25",
       strip: "from-emerald-400 via-teal-300 to-cyan-300",
-      tile: "border-emerald-200/80 bg-emerald-50/55 dark:bg-emerald-950/25 dark:border-emerald-300/25",
+      tile: "border-slate-200 bg-transparent dark:border-slate-700/70",
       label: "text-emerald-700",
     };
   }
@@ -118,7 +118,7 @@ export function oltAccent(olt: Olt) {
         "border-cyan-300 bg-gradient-to-br from-cyan-50 via-sky-50 to-blue-50 shadow-cyan-900/15 dark:from-cyan-950/55 dark:via-sky-950/45 dark:to-blue-950/35",
       icon: "bg-gradient-to-br from-cyan-400 to-sky-500 text-slate-950 shadow-cyan-500/25",
       strip: "from-cyan-400 via-sky-300 to-blue-300",
-      tile: "border-cyan-200/80 bg-cyan-50/55 dark:bg-cyan-950/25 dark:border-cyan-300/25",
+      tile: "border-slate-200 bg-transparent dark:border-slate-700/70",
       label: "text-cyan-700",
     };
   }
@@ -129,7 +129,7 @@ export function oltAccent(olt: Olt) {
       "border-amber-300 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 shadow-amber-900/15 dark:from-amber-950/50 dark:via-orange-950/40 dark:to-yellow-950/30",
     icon: "bg-gradient-to-br from-amber-300 to-orange-400 text-slate-950 shadow-amber-500/25",
     strip: "from-amber-300 via-orange-300 to-yellow-300",
-    tile: "border-amber-200/80 bg-amber-50/55 dark:bg-amber-950/25 dark:border-amber-300/25",
+    tile: "border-slate-200 bg-transparent dark:border-slate-700/70",
     label: "text-amber-700",
   };
 }
@@ -190,6 +190,82 @@ export function displayDeviceType(olt: Olt) {
 
 export function displayLocation(olt: Olt) {
   return deviceLocationFromSystem(olt.systemInfo, olt.location);
+}
+
+function secondsToCompactUptime(totalSeconds: number) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return "-";
+  const sec = Math.floor(totalSeconds);
+  const days = Math.floor(sec / 86400);
+  const hours = Math.floor((sec % 86400) / 3600);
+  const minutes = Math.floor((sec % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+export function formatOltUptime(olt: Olt): string {
+  const raw = String(olt.uptime || "").trim();
+  if (raw && raw !== "0" && raw !== "-") {
+    if (/^\d+$/.test(raw)) {
+      const n = Number(raw);
+      return secondsToCompactUptime(n > 100000000 ? n / 100 : n);
+    }
+    const d = raw.match(/(\d+)\s*Days?/i);
+    const h = raw.match(/(\d+)\s*Hours?/i);
+    const m = raw.match(/(\d+)\s*Minutes?/i);
+    if (d || h || m) {
+      const parts: string[] = [];
+      if (d && Number(d[1]) > 0) parts.push(`${Number(d[1])}d`);
+      if (h) parts.push(`${Number(h[1])}h`);
+      if (m) parts.push(`${Number(m[1])}m`);
+      return parts.join(" ") || raw;
+    }
+    return raw;
+  }
+
+  const sys = olt.systemInfo ?? {};
+  const vsolUp = cleanDisplayValue(sys["1.3.6.1.4.1.37950.1.1.5.10.12.5.8.0"]);
+  if (vsolUp) {
+    const d = vsolUp.match(/(\d+)\s*Days?/i);
+    const h = vsolUp.match(/(\d+)\s*Hours?/i);
+    const m = vsolUp.match(/(\d+)\s*Minutes?/i);
+    if (d || h || m) {
+      const parts: string[] = [];
+      if (d && Number(d[1]) > 0) parts.push(`${Number(d[1])}d`);
+      if (h) parts.push(`${Number(h[1])}h`);
+      if (m) parts.push(`${Number(m[1])}m`);
+      return parts.join(" ") || vsolUp;
+    }
+    return vsolUp;
+  }
+
+  const hsgqSec = Number(sys["1.3.6.1.4.1.50224.3.1.1.3.0"] || 0);
+  if (Number.isFinite(hsgqSec) && hsgqSec > 0) {
+    return secondsToCompactUptime(hsgqSec);
+  }
+
+  const sysTicks = Number(sys["1.3.6.1.2.1.1.3.0"] || 0);
+  if (Number.isFinite(sysTicks) && sysTicks > 0) {
+    return secondsToCompactUptime(sysTicks / 100);
+  }
+
+  return "-";
+}
+
+export function displayOltTemperature(olt: Olt): number | null {
+  const sys = olt.systemInfo ?? {};
+  const raw =
+    sys["oltTemperatureC"] ?? sys["1.3.6.1.4.1.37950.1.1.5.10.12.5.9.0"];
+  if (!raw) return null;
+  const val = Number(raw);
+  return Number.isFinite(val) && val > -40 && val < 150 ? val : null;
+}
+
+export function loadTone(value: number): SignalTone {
+  if (!Number.isFinite(value) || value <= 0) return "empty";
+  if (value >= 85) return "critical";
+  if (value >= 65) return "warning";
+  return "good";
 }
 
 export function formatRxPower(value: number) {
