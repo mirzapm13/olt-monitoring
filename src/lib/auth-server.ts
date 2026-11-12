@@ -22,7 +22,7 @@ type AuthState = {
 const authDbPath = path.join(process.cwd(), "data", "auth-db.json");
 
 function nowText() {
-  return new Date().toLocaleString("id-ID");
+  return new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
 }
 
 function hashPassword(password: string) {

@@ -23,6 +23,10 @@ const telegramTimeoutMs = 8000
 const telegramBrand = "Mikroin Monitor"
 let telegramPollingBusy = false
 
+function nowJakarta() {
+  return new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })
+}
+
 function hasTelegramCredentials(settings: TelegramSettings) {
   return Boolean(settings.botToken.trim() && settings.chatId.trim())
 }
@@ -147,7 +151,7 @@ function oltLine(olt: Olt, status: "down" | "recovery", errorMessage?: string) {
     `Lokasi: ${olt.location || "-"}`,
     `Status: ${status === "down" ? "offline" : "online"}`,
     errorMessage ? `Error: ${errorMessage}` : null,
-    `Waktu: ${new Date().toLocaleString("id-ID")}`,
+    `Waktu: ${nowJakarta()}`,
   ]
     .filter(Boolean)
     .join("\n")
@@ -241,7 +245,7 @@ export async function notifyOnuStatusChanges(state: MonitoringState, olt: Olt, n
           `RX: ${formatRxPower(onu.rxPower)}`,
           `Suhu: ${formatTemperature(onu.temperatureC)}`,
           `Kasus: ${onu.downReason || "Down"}`,
-          `Waktu: ${new Date().toLocaleString("id-ID")}`,
+          `Waktu: ${nowJakarta()}`,
         ].join("\n"),
       )
       if (notification.ok) result.sent += 1
@@ -265,7 +269,7 @@ export async function notifyOnuStatusChanges(state: MonitoringState, olt: Olt, n
           `Status: online`,
           `RX: ${formatRxPower(onu.rxPower)}`,
           `Suhu: ${formatTemperature(onu.temperatureC)}`,
-          `Waktu: ${new Date().toLocaleString("id-ID")}`,
+          `Waktu: ${nowJakarta()}`,
         ].join("\n"),
       )
       if (notification.ok) result.sent += 1

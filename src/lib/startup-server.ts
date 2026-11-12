@@ -189,6 +189,7 @@ function linuxSystemdGuide() {
     "Restart=always",
     "RestartSec=5",
     "Environment=NODE_ENV=production",
+    "Environment=TZ=Asia/Jakarta",
     `Environment=PORT=${appPort}`,
     "",
     "[Install]",

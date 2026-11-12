@@ -17,6 +17,10 @@ const successfulPolls = new Map<
   { oltId: string; oltName: string; onuCount: number; onlineCount: number; polledAt: string }
 >()
 
+function nowJakarta() {
+  return new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })
+}
+
 function formatRxPower(value: number) {
   if (!Number.isFinite(value) || value === 0) return "-"
   return `${value} dBm`
@@ -87,7 +91,7 @@ function buildOltAlertDetail(olt: Olt, eventTime: string, eventLabel: string, er
 function buildOltTransitionAlert(state: MonitoringState, olt: Olt, status: "down" | "recovery", errorMessage?: string) {
   if (latestSavedOltEvent(state, olt.id) === status) return null
 
-  const eventTime = new Date().toLocaleString("id-ID")
+  const eventTime = nowJakarta()
 
   return {
     id: `olt-${olt.id}-${status}-${Date.now()}`,
@@ -102,7 +106,7 @@ function buildOltTransitionAlert(state: MonitoringState, olt: Olt, status: "down
 
 function buildTransitionAlerts(state: MonitoringState, olt: Olt, nextOnus: Onu[]) {
   const previousById = new Map(state.onus.filter((onu) => onu.oltId === olt.id).map((onu) => [onu.id, onu]))
-  const eventTime = new Date().toLocaleString("id-ID")
+  const eventTime = nowJakarta()
   const alerts: Alert[] = []
   const recoveredOnuIds: string[] = []
 
@@ -264,7 +268,7 @@ export async function POST(request: Request) {
           ? { ...alert, acknowledged: true }
           : alert,
       )
-      const polledAt = new Date().toLocaleString("id-ID")
+      const polledAt = nowJakarta()
       const onlineCount = polledOnus.filter((onu) => onu.status === "online").length
       const nextOnus = [
         ...state.onus.filter((onu) => onu.oltId !== olt.id),
@@ -304,7 +308,7 @@ export async function POST(request: Request) {
       })
     }
 
-    const failedAt = new Date().toLocaleString("id-ID")
+    const failedAt = nowJakarta()
     failedPolls.set(olt.id, {
       oltId: olt.id,
       oltName: olt.name,

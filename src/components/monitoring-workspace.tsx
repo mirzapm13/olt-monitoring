@@ -79,6 +79,10 @@ export function MonitoringWorkspace({ view }: { view: View }) {
     setToast({ message, tone });
   }
 
+  function nowJakarta() {
+    return new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+  }
+
   useEffect(() => {
     stateRef.current = storedState;
   }, [storedState]);
@@ -710,7 +714,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
               ...item,
               status: result.ok ? ("online" as const) : ("offline" as const),
               lastSeen: result.ok
-                ? new Date().toLocaleString("id-ID")
+                ? nowJakarta()
                 : item.lastSeen,
               uptime: result.values?.["1.3.6.1.2.1.1.3.0"] ?? item.uptime,
               model: deviceTypeFromSystem(result.values, item.model),
@@ -769,7 +773,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
           oltId: olt.id,
           oltName: olt.name,
           message: result.message || "Polling SNMP ke OLT gagal.",
-          failedAt: new Date().toLocaleString("id-ID"),
+          failedAt: nowJakarta(),
         };
         setFailedPolls((prev) => ({ ...prev, [olt.id]: failedInfo }));
         setDismissedFailedIds((prev) => prev.filter((id) => id !== olt.id));
@@ -797,7 +801,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
         return;
       }
 
-      const polledAt = result.polledAt || new Date().toLocaleString("id-ID");
+      const polledAt = result.polledAt || nowJakarta();
       const onlineCount =
         result.onus?.filter((onu) => onu.status === "online").length ?? 0;
 
@@ -871,7 +875,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
           oltId: olt.id,
           oltName: olt.name,
           message: errorMsg,
-          failedAt: new Date().toLocaleString("id-ID"),
+          failedAt: nowJakarta(),
         },
       }));
       setDismissedFailedIds((prev) => prev.filter((id) => id !== olt.id));
