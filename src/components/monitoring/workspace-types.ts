@@ -36,6 +36,14 @@ export type FailedPollInfo = {
   failedAt: string;
 };
 
+export type SuccessfulPollInfo = {
+  oltId: string;
+  oltName: string;
+  onuCount?: number;
+  onlineCount?: number;
+  polledAt: string;
+};
+
 export type StartupStatus = {
   enabled: boolean;
   path?: string;

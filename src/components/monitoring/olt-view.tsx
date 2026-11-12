@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  CheckCircle2,
   CircleAlert,
   Pencil,
   Plus,
@@ -24,6 +25,7 @@ import {
   secondaryButtonClass,
   type FailedPollInfo,
   type OltForm,
+  type SuccessfulPollInfo,
 } from "./workspace-types";
 import {
   displayDeviceType,
@@ -212,6 +214,7 @@ export function OltListPanel({
   onPollOnu,
   activePollingIds,
   failedPolls,
+  successfulPolls,
   onRemove,
 }: {
   olts: Olt[];
@@ -224,6 +227,7 @@ export function OltListPanel({
   onPollOnu: (olt: Olt) => void;
   activePollingIds: string[];
   failedPolls: Record<string, FailedPollInfo>;
+  successfulPolls: Record<string, SuccessfulPollInfo>;
   onRemove: (olt: Olt) => void;
 }) {
   return (
@@ -249,6 +253,7 @@ export function OltListPanel({
             const selected = selectedOltId === olt.id;
             const isPolling = activePollingIds.includes(olt.id);
             const failedPoll = failedPolls[olt.id];
+            const successPoll = successfulPolls[olt.id];
 
             return (
               <div
@@ -293,6 +298,18 @@ export function OltListPanel({
                         aria-hidden="true"
                       />
                       Polling Gagal
+                    </span>
+                  )}
+                  {!isPolling && !failedPoll && successPoll && (
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-200"
+                      title={`Polling berhasil pada ${successPoll.polledAt}`}
+                    >
+                      <CheckCircle2
+                        className="h-3 w-3 text-emerald-600 dark:text-emerald-400"
+                        aria-hidden="true"
+                      />
+                      Poll OK • {successPoll.polledAt}
                     </span>
                   )}
                   <StatusBadge value={olt.status} />

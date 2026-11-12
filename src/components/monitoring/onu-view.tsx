@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -19,6 +20,7 @@ import {
   panelClass,
   secondaryButtonClass,
   type FailedPollInfo,
+  type SuccessfulPollInfo,
 } from "./workspace-types";
 import {
   formatNumber,
@@ -54,6 +56,7 @@ export function OnuView(props: {
   onPollOnu: (olt: Olt) => void;
   activePollingIds: string[];
   failedPolls: Record<string, FailedPollInfo>;
+  successfulPolls: Record<string, SuccessfulPollInfo>;
   onSyncCustomers: () => void;
   syncingCustomers: boolean;
   onuCountByOlt: Record<string, number>;
@@ -69,6 +72,15 @@ export function OnuView(props: {
   const selectedFailedPoll = props.selectedOlt
     ? props.failedPolls[props.selectedOlt.id]
     : undefined;
+  const selectedSuccessPoll = props.selectedOlt
+    ? props.successfulPolls[props.selectedOlt.id]
+    : undefined;
+  const allOltsSuccessCount = Object.keys(props.successfulPolls).filter(
+    (id) => !props.failedPolls[id],
+  ).length;
+  const latestAllSuccessPoll = Object.values(props.successfulPolls).find(
+    (s) => !props.failedPolls[s.oltId],
+  );
   const linkedCount = props.onus.filter((o) => Boolean(o.customerLink)).length;
   const billingLinkedCount = props.onus.filter((o) =>
     Boolean(o.customerLink?.idPelanggan),
@@ -121,6 +133,28 @@ export function OnuView(props: {
                 Polling OLT Gagal
               </span>
             )}
+            {!polling && !selectedFailedPoll && selectedSuccessPoll && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+                <CheckCircle2
+                  className="h-3 w-3 text-emerald-600"
+                  aria-hidden="true"
+                />
+                Poll Berhasil • {selectedSuccessPoll.polledAt}
+              </span>
+            )}
+            {!polling &&
+              isAllOlts &&
+              allOltsSuccessCount > 0 &&
+              latestAllSuccessPoll && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+                  <CheckCircle2
+                    className="h-3 w-3 text-emerald-600"
+                    aria-hidden="true"
+                  />
+                  {allOltsSuccessCount}/{props.olts.length} OLT Poll OK •{" "}
+                  {latestAllSuccessPoll.polledAt}
+                </span>
+              )}
           </div>
           <p className="text-sm text-slate-500">
             Data RX, suhu, dan kasus down dibaca dari OID OLT.{" "}

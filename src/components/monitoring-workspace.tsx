@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleAlert, RefreshCcw, X } from "lucide-react";
+import { CheckCircle2, CircleAlert, RefreshCcw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { MetricCard } from "@/components/metric-card";
@@ -28,6 +28,7 @@ import {
   type FailedPollInfo,
   type OltForm,
   type PollOnuNotification,
+  type SuccessfulPollInfo,
   type ToastState,
   type ToastTone,
   type View,
@@ -53,6 +54,9 @@ export function MonitoringWorkspace({ view }: { view: View }) {
   const [activePollingIds, setActivePollingIds] = useState<string[]>([]);
   const [failedPolls, setFailedPolls] = useState<
     Record<string, FailedPollInfo>
+  >({});
+  const [successfulPolls, setSuccessfulPolls] = useState<
+    Record<string, SuccessfulPollInfo>
   >({});
   const [dismissedFailedIds, setDismissedFailedIds] = useState<string[]>([]);
   const [query, setQuery] = useState("");
@@ -133,6 +137,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
         const data = (await res.json()) as {
           activePolls?: string[];
           failedPolls?: FailedPollInfo[];
+          successfulPolls?: SuccessfulPollInfo[];
         };
         if (!cancelled) {
           if (Array.isArray(data.activePolls)) {
@@ -142,6 +147,15 @@ export function MonitoringWorkspace({ view }: { view: View }) {
             setFailedPolls((prev) => {
               const next = { ...prev };
               for (const item of data.failedPolls!) {
+                next[item.oltId] = item;
+              }
+              return next;
+            });
+          }
+          if (Array.isArray(data.successfulPolls)) {
+            setSuccessfulPolls((prev) => {
+              const next = { ...prev };
+              for (const item of data.successfulPolls!) {
                 next[item.oltId] = item;
               }
               return next;
@@ -170,11 +184,21 @@ export function MonitoringWorkspace({ view }: { view: View }) {
         const data = (await res.json()) as {
           activePolls?: string[];
           failedPolls?: FailedPollInfo[];
+          successfulPolls?: SuccessfulPollInfo[];
         };
         if (Array.isArray(data.failedPolls)) {
           setFailedPolls((prev) => {
             const next = { ...prev };
             for (const item of data.failedPolls!) {
+              next[item.oltId] = item;
+            }
+            return next;
+          });
+        }
+        if (Array.isArray(data.successfulPolls)) {
+          setSuccessfulPolls((prev) => {
+            const next = { ...prev };
+            for (const item of data.successfulPolls!) {
               next[item.oltId] = item;
             }
             return next;
@@ -374,6 +398,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
     .map((olt) => olt.name);
 
   const effectiveFailedPolls: Record<string, FailedPollInfo> = {};
+  const effectiveSuccessfulPolls: Record<string, SuccessfulPollInfo> = {};
   for (const olt of olts) {
     if (failedPolls[olt.id]) {
       effectiveFailedPolls[olt.id] = failedPolls[olt.id];
@@ -384,11 +409,28 @@ export function MonitoringWorkspace({ view }: { view: View }) {
         message: "Gagal menghubungi OLT saat polling SNMP terakhir.",
         failedAt: olt.lastSeen.replace(/^Gagal:\s*/, ""),
       };
+    } else if (successfulPolls[olt.id]) {
+      effectiveSuccessfulPolls[olt.id] = successfulPolls[olt.id];
+    } else if (
+      olt.status === "online" &&
+      olt.lastSeen &&
+      !olt.lastSeen.startsWith("Belum pernah")
+    ) {
+      effectiveSuccessfulPolls[olt.id] = {
+        oltId: olt.id,
+        oltName: olt.name,
+        onlineCount: olt.activeOnu,
+        polledAt: olt.lastSeen,
+      };
     }
   }
   const visibleFailedPolls = Object.values(effectiveFailedPolls).filter(
     (item) => !dismissedFailedIds.includes(item.oltId),
   );
+  const allSuccessfulPolls = Object.values(effectiveSuccessfulPolls);
+  const latestSuccessTime =
+    allSuccessfulPolls.find((item) => item.polledAt !== "Baru saja")?.polledAt ??
+    allSuccessfulPolls[0]?.polledAt;
 
   function updateForm<K extends keyof OltForm>(key: K, value: OltForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -667,7 +709,9 @@ export function MonitoringWorkspace({ view }: { view: View }) {
           ? {
               ...item,
               status: result.ok ? ("online" as const) : ("offline" as const),
-              lastSeen: result.ok ? "Baru saja" : item.lastSeen,
+              lastSeen: result.ok
+                ? new Date().toLocaleString("id-ID")
+                : item.lastSeen,
               uptime: result.values?.["1.3.6.1.2.1.1.3.0"] ?? item.uptime,
               model: deviceTypeFromSystem(result.values, item.model),
               location: deviceLocationFromSystem(result.values, item.location),
@@ -714,6 +758,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
       const result = (await response.json()) as {
         ok: boolean;
         message: string;
+        polledAt?: string;
         onus?: Onu[];
         state?: MonitoringState;
         notification?: Partial<PollOnuNotification> & { message: string };
@@ -752,12 +797,26 @@ export function MonitoringWorkspace({ view }: { view: View }) {
         return;
       }
 
+      const polledAt = result.polledAt || new Date().toLocaleString("id-ID");
+      const onlineCount =
+        result.onus?.filter((onu) => onu.status === "online").length ?? 0;
+
       setFailedPolls((prev) => {
         if (!prev[olt.id]) return prev;
         const next = { ...prev };
         delete next[olt.id];
         return next;
       });
+      setSuccessfulPolls((prev) => ({
+        ...prev,
+        [olt.id]: {
+          oltId: olt.id,
+          oltName: olt.name,
+          onuCount: result.onus?.length,
+          onlineCount,
+          polledAt,
+        },
+      }));
       setDismissedFailedIds((prev) => prev.filter((id) => id !== olt.id));
 
       const currentState = stateRef.current;
@@ -775,10 +834,8 @@ export function MonitoringWorkspace({ view }: { view: View }) {
               ? {
                   ...item,
                   status: "online" as const,
-                  activeOnu:
-                    result.onus?.filter((onu) => onu.status === "online")
-                      .length ?? 0,
-                  lastSeen: "Baru saja",
+                  activeOnu: onlineCount,
+                  lastSeen: polledAt,
                 }
               : item,
           ),
@@ -952,6 +1009,43 @@ export function MonitoringWorkspace({ view }: { view: View }) {
         </div>
       )}
 
+      {activePollingIds.length === 0 &&
+        visibleFailedPolls.length === 0 &&
+        allSuccessfulPolls.length > 0 && (
+          <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-emerald-300 bg-emerald-50/90 px-4 py-2.5 text-sm text-emerald-900 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-100">
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2
+                className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+                aria-hidden="true"
+              />
+              <span>
+                Polling SNMP terakhir berhasil:{" "}
+                <strong>
+                  {allSuccessfulPolls.length}/{olts.length} OLT
+                </strong>{" "}
+                online
+                {latestSuccessTime ? (
+                  <span className="ml-1 text-xs opacity-80">
+                    (Terakhir: {latestSuccessTime})
+                  </span>
+                ) : null}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {allSuccessfulPolls.map((item) => (
+                <span
+                  key={item.oltId}
+                  className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200"
+                  title={`Berhasil dipolling: ${item.polledAt}`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  {item.oltName}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
       {(view === "dashboard" || view === "olts") && (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
@@ -988,6 +1082,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
           notice={notice}
           activePollingIds={activePollingIds}
           failedPolls={effectiveFailedPolls}
+          successfulPolls={effectiveSuccessfulPolls}
         />
       )}
 
@@ -1012,6 +1107,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
             onPollOnu={pollOnu}
             activePollingIds={activePollingIds}
             failedPolls={effectiveFailedPolls}
+            successfulPolls={effectiveSuccessfulPolls}
             onRemove={setDeleteCandidate}
           />
         </section>
@@ -1056,6 +1152,7 @@ export function MonitoringWorkspace({ view }: { view: View }) {
           onPollOnu={pollOnu}
           activePollingIds={activePollingIds}
           failedPolls={effectiveFailedPolls}
+          successfulPolls={effectiveSuccessfulPolls}
           onSyncCustomers={syncCustomersAndMikrotik}
           syncingCustomers={syncingCustomers}
           onuCountByOlt={onus.reduce<Record<string, number>>((acc, item) => {

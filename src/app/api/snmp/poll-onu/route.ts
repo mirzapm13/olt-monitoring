@@ -12,6 +12,10 @@ const failedPolls = new Map<
   string,
   { oltId: string; oltName: string; message: string; failedAt: string }
 >()
+const successfulPolls = new Map<
+  string,
+  { oltId: string; oltName: string; onuCount: number; onlineCount: number; polledAt: string }
+>()
 
 function formatRxPower(value: number) {
   if (!Number.isFinite(value) || value === 0) return "-"
@@ -260,7 +264,12 @@ export async function POST(request: Request) {
           ? { ...alert, acknowledged: true }
           : alert,
       )
-      const nextOnus = [...state.onus.filter((onu) => onu.oltId !== olt.id), ...polledOnus]
+      const polledAt = new Date().toLocaleString("id-ID")
+      const onlineCount = polledOnus.filter((onu) => onu.status === "online").length
+      const nextOnus = [
+        ...state.onus.filter((onu) => onu.oltId !== olt.id),
+        ...polledOnus.map((onu) => ({ ...onu, lastSeen: polledAt })),
+      ]
       const nextState = {
         ...state,
         onus: nextOnus,
@@ -270,16 +279,29 @@ export async function POST(request: Request) {
             ? {
                 ...item,
                 status: "online" as const,
-                activeOnu: polledOnus.filter((onu) => onu.status === "online").length,
-                lastSeen: "Baru saja",
+                activeOnu: onlineCount,
+                lastSeen: polledAt,
               }
             : item,
         ),
       }
       const savedState = await writeMonitoringState(nextState)
       failedPolls.delete(olt.id)
+      successfulPolls.set(olt.id, {
+        oltId: olt.id,
+        oltName: olt.name,
+        onuCount: polledOnus.length,
+        onlineCount,
+        polledAt,
+      })
 
-      return NextResponse.json({ ...result, onus: polledOnus, state: savedState, notification })
+      return NextResponse.json({
+        ...result,
+        polledAt,
+        onus: polledOnus.map((onu) => ({ ...onu, lastSeen: polledAt })),
+        state: savedState,
+        notification,
+      })
     }
 
     const failedAt = new Date().toLocaleString("id-ID")
@@ -333,5 +355,6 @@ export async function GET() {
   return NextResponse.json({
     activePolls: Array.from(activePolls),
     failedPolls: Array.from(failedPolls.values()),
+    successfulPolls: Array.from(successfulPolls.values()),
   })
 }
