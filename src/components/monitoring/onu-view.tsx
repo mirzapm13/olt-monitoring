@@ -67,7 +67,7 @@ export function OnuView(props: {
     ? props.activePollingIds.length > 0
     : Boolean(
         props.selectedOlt &&
-          props.activePollingIds.includes(props.selectedOlt.id),
+        props.activePollingIds.includes(props.selectedOlt.id),
       );
   const selectedFailedPoll = props.selectedOlt
     ? props.failedPolls[props.selectedOlt.id]
@@ -188,7 +188,9 @@ export function OnuView(props: {
             onChange={(event) => props.onSelectPon(event.target.value)}
             aria-label="Filter PON"
           >
-            <option value="ALL">Semua PON ({props.oltFilteredCount} ONU)</option>
+            <option value="ALL">
+              Semua PON ({props.oltFilteredCount} ONU)
+            </option>
             {props.availablePons.map((item) => (
               <option key={item.ponPort} value={item.ponPort}>
                 PON {item.ponPort} ({item.count} ONU)
@@ -230,11 +232,7 @@ export function OnuView(props: {
               className={`h-4 w-4 ${polling ? "animate-spin" : ""}`}
               aria-hidden="true"
             />
-            {polling
-              ? "Polling..."
-              : isAllOlts
-                ? "Poll Semua OLT"
-                : "Poll ONU"}
+            {polling ? "Polling..." : isAllOlts ? "Poll Semua OLT" : "Poll ONU"}
           </button>
 
           <button
@@ -281,8 +279,8 @@ export function OnuView(props: {
                   <th className="px-4 py-3 font-semibold">Nama (SNMP)</th>
                   <th className="px-4 py-3 font-semibold">Pelanggan (ISP)</th>
                   <th className="px-4 py-3 font-semibold">PPPoE / Router</th>
-                  <th className="px-4 py-3 font-semibold">Serial</th>
                   <th className="px-4 py-3 font-semibold">OLT / PON</th>
+                  <th className="px-4 py-3 font-semibold">MAC</th>
                   <th className="px-4 py-3 font-semibold">RX</th>
                   <th className="px-4 py-3 font-semibold">Suhu</th>
                   <th className="px-4 py-3 font-semibold">Kasus Down</th>
@@ -342,7 +340,18 @@ export function OnuView(props: {
                               <span className="font-semibold">
                                 {link.namaPelanggan}
                               </span>
-                              {link.statusLangganan && (
+                              <span
+                                className={`inline-flex items-center rounded px-1 py-0.2 text-[10px] font-medium ${
+                                  link.macSource === "active"
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : "bg-slate-100 text-slate-600"
+                                }`}
+                              >
+                                {link.macSource === "active"
+                                  ? "active"
+                                  : "last-caller"}
+                              </span>
+                              {/* {link.statusLangganan && (
                                 <span
                                   className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${
                                     link.statusLangganan.toLowerCase() === "on"
@@ -352,7 +361,7 @@ export function OnuView(props: {
                                 >
                                   {link.statusLangganan}
                                 </span>
-                              )}
+                              )} */}
                             </div>
                             <p className="text-xs text-slate-500">
                               ID: {link.idPelanggan || "-"}
@@ -390,17 +399,7 @@ export function OnuView(props: {
                             </div>
                             <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
                               <span className="font-mono">{link.pppoeMac}</span>
-                              <span
-                                className={`inline-flex items-center rounded px-1 py-0.2 text-[10px] font-medium ${
-                                  link.macSource === "active"
-                                    ? "bg-emerald-50 text-emerald-700"
-                                    : "bg-slate-100 text-slate-600"
-                                }`}
-                              >
-                                {link.macSource === "active"
-                                  ? "active"
-                                  : "last-caller"}
-                              </span>
+
                               <span className="inline-flex items-center rounded bg-cyan-50 px-1 py-0.2 font-mono text-[10px] font-semibold text-cyan-800">
                                 MAC {offsetLabel}
                               </span>
@@ -409,9 +408,6 @@ export function OnuView(props: {
                         ) : (
                           <span className="text-xs text-slate-400">-</span>
                         )}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-600">
-                        {onu.serialNumber}
                       </td>
                       <td className="px-4 py-3 text-slate-600">
                         <div className="space-y-0.5">
@@ -425,6 +421,10 @@ export function OnuView(props: {
                           </div>
                         </div>
                       </td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-600">
+                        {onu.serialNumber}
+                      </td>
+
                       <td className="px-4 py-3">
                         <SignalBadge
                           value={formatRxPower(onu.rxPower)}

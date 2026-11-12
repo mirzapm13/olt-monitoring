@@ -21,6 +21,13 @@
   ],
   "auditLogs": [
     {
+      "id": "audit-1794466431573-9b7c0a95-ff9e-4da8-8eb6-093fdee02dbc",
+      "actor": "Superadmin",
+      "action": "login_success",
+      "detail": "Login berhasil.",
+      "createdAt": "12/11/2026, 13.53.51"
+    },
+    {
       "id": "audit-1794391942740-8a959754-0db2-4a55-90b7-0cfeb08707dc",
       "actor": "Superadmin",
       "action": "login_success",
