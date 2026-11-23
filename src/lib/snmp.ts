@@ -818,22 +818,36 @@ async function pollHiosoEponOnusFromOlt(snmp: typeof import("net-snmp"), session
   // in the same SNMP GET batch per ONU so the HiOSO OLT queries each ONU's OAM transceiver only once
   // and never stalls on offline ONUs.
   const onlineItems = [...onusByIndex.values()].filter((item) => item.status === "online")
-  const opticalRows: SnmpRow[] = []
-  const onusPerBatch = 10
+  const onusPerBatch = 5
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-  for (let i = 0; i < onlineItems.length; i += onusPerBatch) {
-    const batch = onlineItems.slice(i, i + onusPerBatch)
+  const buildTripletOids = (items: typeof onlineItems) => {
     const oids: string[] = []
-    for (const item of batch) {
+    for (const item of items) {
       const suffix = `1.${item.ponPort}.${item.ontId}`
       oids.push(
         `${hiosoEponOids.txPower}.${suffix}`,
         `${hiosoEponOids.temperature}.${suffix}`,
-        `${hiosoEponOids.rxPower}.${suffix}`
+        `${hiosoEponOids.rxPower}.${suffix}`,
       )
     }
-    const rows = await getRowsWithFallback(snmp, session, oids)
-    opticalRows.push(...rows)
+    return oids
+  }
+
+  // Sequential, ONU-triplet-aligned fallback so we never split an ONU's 3 OIDs across two packets
+  // and never flood the single-threaded HiOSO OAM daemon with parallel Promise.all requests.
+  const queryHiosoOpticalBatch = async (items: typeof onlineItems): Promise<SnmpRow[]> => {
+    if (items.length === 0) return []
+    const rows = await getRows(snmp, session, buildTripletOids(items))
+    if (rows !== null) return rows
+    if (items.length <= 1) return []
+
+    const middle = Math.ceil(items.length / 2)
+    await sleep(40)
+    const left = await queryHiosoOpticalBatch(items.slice(0, middle))
+    await sleep(40)
+    const right = await queryHiosoOpticalBatch(items.slice(middle))
+    return [...left, ...right]
   }
 
   // Parse opticalRows from 1.3.6.1.4.1.25355.3.2.6.14.2.1.<col>.1.<pon>.<onu>
@@ -851,25 +865,54 @@ async function pollHiosoEponOnusFromOlt(snmp: typeof import("net-snmp"), session
     return Number.isFinite(val) && val > -50 && val < 150 ? val : null
   }
 
-  for (const row of opticalRows) {
-    if (!row.oid.startsWith(`${hiosoEponOids.opticalBase}.`)) continue
-    const sub = row.oid.slice(hiosoEponOids.opticalBase.length + 1)
-    const parts = sub.split(".")
-    if (parts.length < 4 || parts[1] !== "1") continue
+  const applyOpticalRows = (rows: SnmpRow[]) => {
+    for (const row of rows) {
+      if (!row.oid.startsWith(`${hiosoEponOids.opticalBase}.`)) continue
+      const sub = row.oid.slice(hiosoEponOids.opticalBase.length + 1)
+      const parts = sub.split(".")
+      if (parts.length < 4 || parts[1] !== "1") continue
 
-    const col = parts[0]
-    const ponPort = parts[2]
-    const ontId = parts[3]
-    const indexKey = `${ponPort}.${ontId}`
-    const item = onusByIndex.get(indexKey)
-    if (!item) continue
+      const col = parts[0]
+      const ponPort = parts[2]
+      const ontId = parts[3]
+      const indexKey = `${ponPort}.${ontId}`
+      const item = onusByIndex.get(indexKey)
+      if (!item) continue
 
-    if (col === "4") {
-      item.txPower = parseDbm(row.value)
-    } else if (col === "7") {
-      item.temperature = parseTemp(row.value)
-    } else if (col === "8") {
-      item.rxPower = parseDbm(row.value)
+      if (col === "4") {
+        const tx = parseDbm(row.value)
+        if (tx !== 0) item.txPower = tx
+      } else if (col === "7") {
+        const temp = parseTemp(row.value)
+        if (temp !== null) item.temperature = temp
+      } else if (col === "8") {
+        const rx = parseDbm(row.value)
+        if (rx !== 0) item.rxPower = rx
+      }
+    }
+  }
+
+  for (let i = 0; i < onlineItems.length; i += onusPerBatch) {
+    const batch = onlineItems.slice(i, i + onusPerBatch)
+    const rows = await queryHiosoOpticalBatch(batch)
+    applyOpticalRows(rows)
+    if (i + onusPerBatch < onlineItems.length) {
+      await sleep(35)
+    }
+  }
+
+  // Single retry for any online ONUs whose optical reading returned null/empty due to momentary OAM contention
+  const missedOnlineItems = onlineItems.filter((item) => item.rxPower === 0)
+  if (missedOnlineItems.length > 0) {
+    await sleep(200)
+    const retryBatchSize = 3
+    for (let i = 0; i < missedOnlineItems.length; i += retryBatchSize) {
+      const batch = missedOnlineItems.slice(i, i + retryBatchSize)
+      const retryRows = await queryHiosoOpticalBatch(batch)
+      applyOpticalRows(retryRows)
+      if (i + retryBatchSize < missedOnlineItems.length) {
+        await sleep(50)
+      }
     }
   }
 
