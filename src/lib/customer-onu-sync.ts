@@ -53,6 +53,29 @@ function offsetPriority(diff: number): number {
   return 30 + Math.abs(diff)
 }
 
+function compareCandidateOrder(
+  a: { onu: { status: string }; secret: ResolvedPppSecret; priority: number },
+  b: { onu: { status: string }; secret: ResolvedPppSecret; priority: number },
+): number {
+  // 1. Always prefer online ONUs over offline/stale OLT registrations
+  const aOnline = a.onu.status === "online" ? 0 : 1
+  const bOnline = b.onu.status === "online" ? 0 : 1
+  if (aOnline !== bOnline) return aOnline - bOnline
+
+  // 2. Prefer exact / closer MAC offsets
+  if (a.priority !== b.priority) return a.priority - b.priority
+
+  // 3. Prefer active PPPoE sessions over historical last-caller-id
+  const aActive = a.secret.macSource === "active" ? 0 : 1
+  const bActive = b.secret.macSource === "active" ? 0 : 1
+  if (aActive !== bActive) return aActive - bActive
+
+  // 4. Tie-breaker for historical sessions: most recent lastLoggedOut first
+  const aLogout = a.secret.lastLoggedOut || ""
+  const bLogout = b.secret.lastLoggedOut || ""
+  return bLogout.localeCompare(aLogout)
+}
+
 export async function runCustomerOnuSync(): Promise<CustomerOnuSyncResult> {
   const startedAt = Date.now()
   const ispPrisma = new PrismaClient({
@@ -117,6 +140,10 @@ export async function runCustomerOnuSync(): Promise<CustomerOnuSyncResult> {
       })
     }
 
+    const onlineOnuMacs = new Set(
+      validOnus.filter((o) => o.status === "online").map((o) => o.normMac),
+    )
+
     // 3. First-pass 1-to-1 assignment: Billing Customers with MAC <-> ONUs
     type CandidateMatch = {
       rc: ResolvedCustomer
@@ -133,6 +160,8 @@ export async function runCustomerOnuSync(): Promise<CustomerOnuSyncResult> {
 
       for (const onu of validOnus) {
         if (onu.oui !== pppOui) continue
+        // If this ONU row is offline, but the exact same physical ONU MAC is currently online on another OLT/PON, skip this stale offline row
+        if (onu.status !== "online" && onlineOnuMacs.has(onu.normMac)) continue
         const diff = Number(pppInt - onu.macInt)
         if (Math.abs(diff) <= 16) {
           candidates.push({
@@ -145,11 +174,17 @@ export async function runCustomerOnuSync(): Promise<CustomerOnuSyncResult> {
       }
     }
 
-    candidates.sort((a, b) => a.priority - b.priority)
+    candidates.sort((a, b) =>
+      compareCandidateOrder(
+        { onu: a.onu, secret: a.rc.secret, priority: a.priority },
+        { onu: b.onu, secret: b.rc.secret, priority: b.priority },
+      ),
+    )
 
     const assignedCustomerIds = new Set<number>()
     const assignedSecretNames = new Set<string>()
     const assignedOnuIds = new Set<string>()
+    const assignedOnuMacs = new Set<string>()
     const customerIdToOltLabel = new Map<number, string>()
     const offsetCounts = new Map<number, number>()
 
@@ -175,12 +210,17 @@ export async function runCustomerOnuSync(): Promise<CustomerOnuSyncResult> {
     const linksToUpsert: LinkPayload[] = []
 
     for (const cand of candidates) {
-      if (assignedCustomerIds.has(cand.rc.customer.id) || assignedOnuIds.has(cand.onu.id)) {
+      if (
+        assignedCustomerIds.has(cand.rc.customer.id) ||
+        assignedOnuIds.has(cand.onu.id) ||
+        assignedOnuMacs.has(cand.onu.normMac)
+      ) {
         continue
       }
       assignedCustomerIds.add(cand.rc.customer.id)
       assignedSecretNames.add(cand.rc.secret.secretName.toLowerCase())
       assignedOnuIds.add(cand.onu.id)
+      assignedOnuMacs.add(cand.onu.normMac)
 
       const olt = oltById.get(cand.onu.oltId)
       const oltName = olt?.name || cand.onu.oltId
@@ -225,7 +265,14 @@ export async function runCustomerOnuSync(): Promise<CustomerOnuSyncResult> {
       const pppOui = secret.mac.slice(0, 6)
 
       for (const onu of validOnus) {
-        if (assignedOnuIds.has(onu.id) || onu.oui !== pppOui) continue
+        if (
+          assignedOnuIds.has(onu.id) ||
+          assignedOnuMacs.has(onu.normMac) ||
+          onu.oui !== pppOui
+        ) {
+          continue
+        }
+        if (onu.status !== "online" && onlineOnuMacs.has(onu.normMac)) continue
         const diff = Number(pppInt - onu.macInt)
         if (Math.abs(diff) <= 16) {
           secretOnlyCandidates.push({
@@ -238,13 +285,25 @@ export async function runCustomerOnuSync(): Promise<CustomerOnuSyncResult> {
       }
     }
 
-    secretOnlyCandidates.sort((a, b) => a.priority - b.priority)
+    secretOnlyCandidates.sort((a, b) =>
+      compareCandidateOrder(
+        { onu: a.onu, secret: a.secret, priority: a.priority },
+        { onu: b.onu, secret: b.secret, priority: b.priority },
+      ),
+    )
 
     for (const cand of secretOnlyCandidates) {
       const lowerSec = cand.secret.secretName.toLowerCase()
-      if (assignedSecretNames.has(lowerSec) || assignedOnuIds.has(cand.onu.id)) continue
+      if (
+        assignedSecretNames.has(lowerSec) ||
+        assignedOnuIds.has(cand.onu.id) ||
+        assignedOnuMacs.has(cand.onu.normMac)
+      ) {
+        continue
+      }
       assignedSecretNames.add(lowerSec)
       assignedOnuIds.add(cand.onu.id)
+      assignedOnuMacs.add(cand.onu.normMac)
       offsetCounts.set(cand.diff, (offsetCounts.get(cand.diff) || 0) + 1)
 
       linksToUpsert.push({
